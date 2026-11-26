@@ -1,0 +1,35 @@
+dsh-leaderteam (Version 2.3+ Binary & Hybrid Distribution)
+Copyright 2026 LeaderTeam Contributors
+
+Distribution & License Structure:
+- Proprietary V2.3 additions (including compiled native Mapper modules in leaderteam/native/ and V2.3 host integration modifications) are distributed under the LeaderTeam Free Distribution License in LICENSE.
+- Underlying LeaderTeam <= 2.2.x open-source core code (https://github.com/youzi-ovo-create/dsh-leaderteam) and the third-party components listed below remain subject to their respective open-source licenses; full license texts are provided in THIRD_PARTY_LICENSES. Nothing in LICENSE restricts any rights granted under those open-source licenses for the applicable open-source portions.
+
+This repository includes code adapted from or bundled with the following
+third-party components:
+
+1. dsh-auto-review v0.15.0
+   Source: community DeepSeek Harness plugin (Apache License 2.0)
+   Modifications in this repository:
+   - leaderteam/core/redact.mjs: sanitizeArguments, redactInlineSecrets, truncate (ported from src/review.ts)
+   - leaderteam/host/llm.mjs: inline tool-less reviewer call with timeout/cancel/failure classification (ported from runReviewInline)
+   - leaderteam/core/gate-policy.mjs: extractReviewerJson (ported)
+
+2. dsh-context 0.82.1 (adapted and packaged as 0.82.1-leaderteam.1)
+   Source: https://github.com/bowenliang123/dsh-context
+   Upstream author: bowenliang123
+   Upstream commit: cc481fc070dff5fec57e9d8381f70698f546f59e
+   License: Apache License 2.0 (original license preserved at extensions/dsh-context/LICENSE)
+   Modifications in this repository (extensions/dsh-context/ and packages/dsh-context/):
+   - Added LeaderTeam host entry wrapper (host-entry.mjs) binding official Desktop peers
+   - Added team formation / effort badge visualization and auxiliary usage ledger aggregation (leaderteam/teams/*/usage.jsonl)
+   - Disabled upstream balance query endpoint and adjusted client CSS grid span
+   - Build metadata recorded in extensions/dsh-context/upstream-and-release.json
+
+3. @deepseek-ai/dsh-sandbox-windows-acl (diagnostic skill & script)
+   Source: DeepSeek Harness Desktop 0.13.2 / core 0.2.2-alpha.2
+   Files & SHA-256 provenance recorded in tools/dsh-sandbox-acl/SOURCE.json:
+   - tools/dsh-sandbox-acl/SKILL.md
+   - tools/dsh-sandbox-acl/scripts/diagnose-windows-sandbox-acl.ps1
+
+The full Apache License 2.0, MIT, and ISC license texts for underlying open-source and third-party components are distributed in THIRD_PARTY_LICENSES at the package root.

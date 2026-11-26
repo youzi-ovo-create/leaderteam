@@ -1,0 +1,21 @@
+LeaderTeam 2.3+ 免费发行使用许可协议
+LeaderTeam Free Distribution License (Version 2.3+)
+
+Copyright (c) 2026 LeaderTeam Contributors. All rights reserved for proprietary 2.3+ additions.
+
+1. 适用范围与开闭源关系说明 (Scope & Relationship to Open-Source Components)
+本发行包（dsh-leaderteam 2.3.x）属于混合架构软件发行物，包含两部分内容：
+(a) 专有新增部分（Proprietary 2.3+ Additions）：包括预编译的双平台原生模块（leaderteam/native/mapper.*.node）、2.3 原生映射宿主接线层（leaderteam/host/mapper.mjs）及相对公开 2.2.x 基线新增的专有集成代码，其对应原生源码不予公开，适用本协议第 2、3 条授权边界。
+(b) 原有开源基座与第三方组件（Open-Source Base & Third-Party Components）：本包衍生自采用 Apache License 2.0 公开发布的 dsh-leaderteam（<= 2.2.x，源码仓：https://github.com/youzi-ovo-create/dsh-leaderteam），并包含或静态链接了若干采用 Apache-2.0、MIT 或 ISC 许可的第三方组件（清单及许可证全文见同目录下的 THIRD_PARTY_LICENSES 与 leaderteam/NOTICE）。
+【重要保留条款】本协议的任何条款均不撤销、限制或减损接收方依据原 Apache License 2.0 或各第三方组件适用开源协议对上述原有开源部分所享有的既有合法权利。
+
+2. 免费使用授权 (Free Usage Grant)
+在遵守本协议第 3 条限制及保留完整版权与许可文件的前提下，权利人免费授予任何个人或组织一项全球性、免版税、非排他、不可转让的许可：允许下载、安装并在受支持的宿主环境中运行本发行包，用于个人研发、学术研究、技术评测及企业内部软件开发工作。
+
+3. 专有新增部分的使用限制 (Restrictions on Proprietary 2.3+ Additions)
+针对第 1(a) 款所述的专有新增部分（法律另有强制性允许的除外），未经权利人书面许可，不得：
+- 将本发行包的专有二进制模块或整体制品重新包装、更名或作为商业收费软件/托管服务对外二次销售与再分发；
+- 移除、遮挡或篡改本包内的 LICENSE、THIRD_PARTY_LICENSES 及 leaderteam/NOTICE 归属声明。
+
+4. 免责声明 (Disclaimer)
+本软件按“现状（AS IS）”免费提供，不附带任何明示或暗示的适销性、特定用途适用性及不侵权担保。在适用法律允许的范围内，作者或版权持有人不对因使用或无法使用本软件而产生的任何直接或间接损失承担赔偿责任。
