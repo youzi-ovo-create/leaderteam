@@ -2,6 +2,30 @@
 
 本项目的所有重要版本变更均记录于此文件，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [2.4.0] (`linux-v2.4.0`) - 2026-11-27
+
+**Linux `x86_64` 独立发行版**（纯 Team 模式产品化终验冻结版，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
+
+### Added
+- **内置轻量 API Key 网关与统一模型池**：
+  - 支持单向加密写入本地 `0600` 凭据库、单供应商多 Key 顺位容灾切换（`401/403/429/5xx` 自动切备用 Key）、多协议原生转发（OpenAI Chat Completions / OpenAI Responses / Anthropic Messages / Google Generative AI）与统一协议适配；
+  - 支持多 Key 联合目录发现、手动补充模型、显式区分「目录声明（`catalog_only`）」「连通探测（`probe_verified`）」「实调验证（`call_verified`）」三层能力状态，保留独立外部网关与 Solo-Key 直连并存。
+- **Mapper 深度治理与独立工作台（`/lt`）**：
+  - 集成 LT 原生工作台（`/lt`）与河洛序多主题体系（纯白高可读默认底色、玄墨暗色、河洛序原色与自定义主题），支持 DSH 侧栏一键切换与 `Alt+Shift+L` 同会话无损往返；
+  - 提供 7 角色独立模型与推理档位治理、执行主备路由链配置、路由模拟与 `[n. X-Y]` 执行槽位跨轮回读诊断视图。
+- **衡账模块化整合与三源对账**：
+  - 打通 DSH 会话日志（`session.v4.jsonl.zstd`）、LT 治理账本与轻量网关尝试日志，区分逻辑请求与物理尝试，支持 4 桶缓存 Token 计费、跨供应商同名模型独立计价、DeepSeek 错峰折算与未知费用显式留空（`unknown != 0`）。
+- **公共契约对齐**：完整支持 `lt.public.v1` 公开接口信封、能力描述与密钥脱敏规范。
+
+### Fixed & Hardened
+- 强化跨进程网关启停锁与多 `dsh --profile web` 实例共享网关停机归属保护；
+- 强化悬空符号链接路径穿越拦截、POSIX Shell 写入边界校验、HTTP 200 SSE 流内错误实时落盘及无父会话日志的子会话衡账统计。
+
+### Known Limitations (`linux-v2.4.0`)
+- 本次发行包仅覆盖 **`Linux x86_64`（`glibc >= 2.39`）** 与 DeepSeek Harness **`0.2.2-rc.5`**（CLI / Web）；Windows x64 用户请继续使用双平台 `v2.3.0` 直至 Windows 独立发行线发布；
+- 纯 Team 治理模式（不含 V2.5 会话内 Single / Team 双模式）；
+- 衡账默认读取 DSH `session.v4.jsonl.zstd` 压缩会话日志；部分边缘计量与手动探测细节将在后续 V2.6 维护版中统一收敛。
+
 ## [2.3.0] - 2026-11-26
 
 双平台（`Linux x86_64` & `Windows x64`）原生模型映射与跨轮事实回读版（免费公开发行制品，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
