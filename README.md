@@ -8,17 +8,21 @@
 
 本仓库是 **LeaderTeam for DeepSeek Harness** `V2.3+` 演进线的独立公开制品发行仓，仅发布经实机验收的标准安装包（`.tgz`）、SHA-256 校验文件、版本说明、用户文档与许可证文件。
 
+> **什么是 LeaderTeam？**  
+> LeaderTeam 是运行在 **DeepSeek Harness（DSH）** 上的多 Agent 分权自治工程协作插件：你只需提交一句工程需求，领队模型自动拆解并并行派发执行成员，双评审后台异步监督、独立裁断按需介入纠偏，并配备 `0ms` 确定性宿主安全门与四桶物理 Token 账本。本仓发布的 `V2.3+` 闭源免费版在此基础上增加了 **Rust Node-API 原生模型映射核心**、**内置轻量 API Key 多协议网关**、**会话内 Single / Team 双模式切换**与**衡账三源对账**。
+
 > **发行性质与平台解耦声明（闭源免费公开发行）**：
 > - `LeaderTeam V2.3+` 为**闭源免费公开发行版本**——预编译原生模块与专有演进源码不对外公开，但安装包**免费向所有个人开发者、学术研究、技术评测及企业内部研发开放下载使用**（具体授权边界与原开源组件权利保留条款见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）。
-> - 自 `V2.4` 起，**Linux 发行线（`linux-vX.Y.Z`）与 Windows 发行线（`windows-vX.Y.Z` / 双平台合包）按各自真机验证节奏独立发行**；Windows x64 用户在 Windows 独立版发布前请继续使用双平台正式版 `v2.3.0`。
-> - 纯 Node.js 开源维护线（`V2.2.x`）继续在开源主仓公开维护。
+> - 自 `V2.4` 起，**Linux 发行线（`linux-vX.Y.Z`）与 Windows 发行线（`windows-vX.Y.Z` / 双平台合包）按各自真机验证节奏独立发行**；Windows x64 用户在 Windows 独立版发布前请继续使用双平台正式版 `v2.3.0`（或前往开源主仓使用已双平台发行的 `windows-v2.2.3`）。
+> - 纯 Node.js 开源维护线（`V2.2.3` / `V2.2.2`）继续在开源主仓公开维护。
 
 | 发行轨道 / 标签 | 仓库与发行链接 | 覆盖平台 | 主要能力与定位 |
 |---|---|---|---|
 | **Linux 最新发行 (`linux-v2.5.1`)** | [`linux-v2.5.1`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.5.1) | `Linux x86_64` (`glibc >= 2.39`) | 会话内 **Single / Team 双模式** + **河洛序三层 UI** + 内置轻量 API Key 网关 + 衡账三源对账 + 原生模型映射（DSH `0.2.2-rc.5`） |
+| **Linux 双模基线 (`linux-v2.5.0`)** | [`linux-v2.5.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.5.0) | `Linux x86_64` (`glibc >= 2.39`) | 会话内 **Single / Team 双模式**二轮终验基线（7 重切换守卫 + 内置轻量网关 + 原生模型映射 + 衡账三源对账，DSH `0.2.2-rc.5`） |
 | **Linux 纯 Team 基线 (`linux-v2.4.0`)** | [`linux-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.4.0) | `Linux x86_64` (`glibc >= 2.39`) | 纯 Team 自治治理模式 + 内置轻量 API Key 网关 + 原生工作台 `/lt` + 衡账三源对账 + 原生模型映射（DSH `0.2.2-rc.5`） |
 | **双平台基线 (`v2.3.0`)** | [`v2.3.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/v2.3.0) | `Linux x86_64` + `Windows x64` | 双平台预编译 Rust Node-API 模型映射核心与异构执行备援链（支持 Windows Desktop `0.2.2-rc.1` 与 CLI/Web `0.2.2-rc.5`） |
-| **V2.2.x 开源维护线** | [`youzi-ovo-create/dsh-leaderteam`](https://github.com/youzi-ovo-create/dsh-leaderteam) | 跨平台纯 Node.js ESM | 纯 `Apache-2.0` 开源核心源码、安装包与历代工程实证报告 |
+| **V2.2.x 开源维护线 (`V2.2.3` / `V2.2.2`)** | [`youzi-ovo-create/dsh-leaderteam`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases) | `Linux x64` + `Windows x64`（纯 Node.js ESM） | 纯 `Apache-2.0` 开源核心源码、双平台正式包（`linux-v2.2.3` / `windows-v2.2.3` / `linux-v2.2.2` / `windows-v2.2.2`）与历代工程实证报告 |
 
 ---
 
@@ -27,12 +31,12 @@
 ### 1. 经实机验证的平台、宿主兼容范围与首次安装要求
 
 - **支持平台与架构**：
-  - `Linux x86_64`（`glibc >= 2.39`，已于 Ubuntu 24.04 x86_64 实机验证）：推荐使用最新 **`linux-v2.5.1`**（或纯 Team 基线 **`linux-v2.4.0`**）；
+  - `Linux x86_64`（`glibc >= 2.39`，已于 Ubuntu 24.04 x86_64 实机验证）：推荐使用最新 **`linux-v2.5.1`**（亦提供双模基线 **`linux-v2.5.0`** 与纯 Team 基线 **`linux-v2.4.0`**）；
   - `Windows x64`（独立 Node.js 与官方桌面端 Electron）：当前请使用双平台正式版 **`v2.3.0`**；
   - *非支持平台行为说明*：`macOS` 加载时会自动跳过原生映射模块；`Linux arm64`、`Windows arm64` 及基于 `musl` 的 Linux（如 Alpine）不在当前二进制包支持范围内（Fail-Closed）。
 - **Node.js 要求**：`>= 22.15`（推荐 `22.19+` 或 `24.x`）。
 - **DeepSeek Harness 宿主兼容范围**：
-  - `linux-v2.5.1` / `linux-v2.4.0`：已通过实机全量验收 **`0.2.2-rc.5`**（CLI / Web）；
+  - `linux-v2.5.1` / `linux-v2.5.0` / `linux-v2.4.0`：已通过实机全量验收 **`0.2.2-rc.5`**（CLI / Web）；
   - `v2.3.0`：已通过实机验收 **`0.2.2-rc.1`**（官方 Windows Desktop）与 **`0.2.2-rc.5`**（CLI / Web）；
   - 未经实机验证的宿主版本默认维持 **Fail-Closed** 拒绝受保护加载（可通过包内 `lt-doctor --check-host` 离线预检）。
 - **首次安装前置要求**：
@@ -53,7 +57,7 @@ grep "dsh-leaderteam-2.5.1-linux-x64.tgz" SHA256SUMS.txt | sha256sum -c -
 dsh plugin --profile web add ./dsh-leaderteam-2.5.1-linux-x64.tgz
 ```
 
-> 如需纯 Team 治理基线（不含 Single / Team 双模式），可下载 [`linux-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.4.0) 下的 `dsh-leaderteam-2.4.0-linux-x64.tgz` 并以相同方式安装。
+> 如需双模基线（不含 V2.5.1 三层 UI 重构），可下载 [`linux-v2.5.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.5.0) 下的 `dsh-leaderteam-2.5.0-linux-x64.tgz`；如需纯 Team 治理基线（不含 Single / Team 双模式），可下载 [`linux-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.4.0) 下的 `dsh-leaderteam-2.4.0-linux-x64.tgz`，均以相同方式校验并安装。
 
 #### B. 官方 Windows `x64` Desktop / 双平台基线（`v2.3.0`）
 
@@ -73,8 +77,8 @@ dsh plugin --profile desktop add ./dsh-leaderteam-2.3.0.tgz
 
 ## 版本升级与回退
 
-- **在 `v2.3.0`、`linux-v2.4.0`、`linux-v2.5.1` 之间切换或升级**：直接对同一 profile 执行 `dsh plugin --profile web add ./<目标版本>.tgz` 即可原地替换，`<DSH_HOME>/leaderteam/config/leaderteam.local.json`、网关凭据库及团队账本自动保留。
-- **回退至开源版 `v2.2.1`**：从开源主仓下载 [`dsh-leaderteam-2.2.1.tgz`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/v2.2.1) 并执行 `dsh plugin --profile <web|desktop> add ./dsh-leaderteam-2.2.1.tgz` 即可回退。
+- **在 `v2.3.0`、`linux-v2.4.0`、`linux-v2.5.0`、`linux-v2.5.1` 之间切换或升级**：直接对同一 profile 执行 `dsh plugin --profile web add ./<目标版本>.tgz` 即可原地替换，`<DSH_HOME>/leaderteam/config/leaderteam.local.json`、网关凭据库及团队账本自动保留。
+- **切换至开源版（`V2.2.3` / `V2.2.2` / `v2.2.1`）**：从开源主仓下载对应平台安装包（如 [`linux-v2.2.3`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/linux-v2.2.3) / [`windows-v2.2.3`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/windows-v2.2.3) 或历史 [`v2.2.1`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/v2.2.1)）并执行 `dsh plugin --profile <web|desktop> add ./dsh-leaderteam-<version>.tgz` 即可切换。
 
 ---
 
@@ -88,6 +92,6 @@ dsh plugin --profile desktop add ./dsh-leaderteam-2.3.0.tgz
   - [LeaderTeam 2.3+ 免费发行使用许可协议 (`LICENSE`)](LICENSE)
   - [原有开源基座与第三方组件许可证全文 (`THIRD_PARTY_LICENSES`)](THIRD_PARTY_LICENSES)
 - **历代工程实证报告（托管于开源主仓 `docs/benchmarks/`）**：
-  - [LeaderTeam V2.2 工程实证报告：49 分钟完成 Linux 跨语言核心模块自举与宿主集成](https://github.com/youzi-ovo-create/dsh-leaderteam/blob/v2.2.1/docs/benchmarks/LeaderTeam_V2.2_Linux%E8%B7%A8%E8%AF%AD%E8%A8%80%E8%87%AA%E4%B8%BE%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%AF%81%E6%8A%A5%E5%91%8A.md)
-  - [LeaderTeam V1.1–V2.2：基于五项真实工程实测的架构演进与发展潜力分析](https://github.com/youzi-ovo-create/dsh-leaderteam/blob/v2.2.1/docs/benchmarks/LeaderTeam_V1.1%E8%87%B3V2.2_%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%8F%91%E5%B1%95%E6%BD%9C%E5%8A%9B%E5%88%86%E6%9E%90.md)
-  - [LeaderTeam V2.1 双项复杂工程实跑测评报告](https://github.com/youzi-ovo-create/dsh-leaderteam/blob/v2.2.1/docs/benchmarks/LeaderTeam_V2.1_%E5%8F%8C%E9%A1%B9%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%91%E6%B5%8B%E8%AF%84%E6%8A%A5%E5%91%8A.md)
+  - [LeaderTeam V2.2 工程实证报告：49 分钟完成 Linux 跨语言核心模块自举与宿主集成](https://github.com/youzi-ovo-create/dsh-leaderteam/blob/main/docs/benchmarks/LeaderTeam_V2.2_Linux%E8%B7%A8%E8%AF%AD%E8%A8%80%E8%87%AA%E4%B8%BE%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%AF%81%E6%8A%A5%E5%91%8A.md)（附 [脱敏核验回执与复算脚本](https://github.com/youzi-ovo-create/dsh-leaderteam/tree/main/docs/benchmarks/evidence/v2.2-linux-selfhost)）
+  - [LeaderTeam V1.1–V2.2：基于五项真实工程实测的架构演进与发展潜力分析](https://github.com/youzi-ovo-create/dsh-leaderteam/blob/main/docs/benchmarks/LeaderTeam_V1.1%E8%87%B3V2.2_%E6%9E%B6%E6%9E%84%E6%BC%94%E8%BF%9B%E4%B8%8E%E5%8F%91%E5%B1%95%E6%BD%9C%E5%8A%9B%E5%88%86%E6%9E%90.md)
+  - [LeaderTeam V2.1 双项复杂工程实跑测评报告](https://github.com/youzi-ovo-create/dsh-leaderteam/blob/main/docs/benchmarks/LeaderTeam_V2.1_%E5%8F%8C%E9%A1%B9%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%91%E6%B5%8B%E8%AF%84%E6%8A%A5%E5%91%8A.md)

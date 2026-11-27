@@ -25,6 +25,23 @@
 - 衡账默认读取 DSH `session.v4.jsonl.zstd` 压缩会话日志；
 - 若干后续探索发现的边缘缺陷（失败尝试用量统计、多标签并发改价覆盖、衡账跨日日期筛选窗口、手动实调严校验及 40 模型批量探测分页等）已纳入下一版 V2.6 维护线修复，不影响 V2.5.1 核心双模式与河洛序工作台主路径使用。
 
+## [2.5.0] (`linux-v2.5.0`) - 2026-11-27
+
+**Linux `x86_64` 独立发行版**（会话内 Single / Team 双模式二轮终验冻结基线 `v2.5.0-linux-final-r2`，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
+
+### Added
+- **会话内 Single / Team 双模式无损往返切换**：在同一会话内支持于轻量单兵直跑（`Single`）与多角色分权自治团队（`Team`）之间切换，无需重建会话或搬移上下文；
+- **7 重状态切换守卫与模式隔离**：在途执行成员存在时自动锁定（`MODE_SWITCH_LOCKED`），空闲边界即时放行并落盘切换审计日志；Single 模式下保持安全门零误拦与独立计量隔离；
+- **公共契约与前端联动**：对齐 `lt.public.v1` 双模式控制接口，在 DSH 头部/空白页与 `/lt` 工作台同步展示与切换当前模式。
+
+### Fixed & Hardened
+- 完整闭环二轮深审全部 8 项缺陷与 2 项二阶对抗问题（`R2-NEW-01` 同工作目录已存在会话防 `reuseLive` 覆写预设返回 `SESSION_ALREADY_EXISTS`、`R2-NEW-02` 跨协议流式错误账本与 `probe_failed` 在 `res.end` 前同步落盘），以及 React `#311` 异步预设加载 Hook 稳定性修复；
+- 通过 Rust `lt-mapper` `17/17`、JS 单测 `402/402`、独立衡账 `24/24`、双线契约与真实 DSH `0.2.2-rc.5` `52/52` 全场景验收。
+
+### Known Limitations (`linux-v2.5.0`)
+- 仅覆盖 **`Linux x86_64`（`glibc >= 2.39`）** 与 DeepSeek Harness **`0.2.2-rc.5`**（CLI / Web）；Windows x64 用户请继续使用双平台 `v2.3.0`；
+- 不含 V2.5.1 的河洛序三层 UI 视觉重构（如需新版三层 UI，请直接安装最新 **`linux-v2.5.1`**）。
+
 ## [2.4.0] (`linux-v2.4.0`) - 2026-11-27
 
 **Linux `x86_64` 独立发行版**（纯 Team 模式产品化终验冻结版，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
