@@ -2,6 +2,23 @@
 
 本项目的所有重要版本变更均记录于此文件，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [2.6.1] (`windows-v2.6.1`) - 2026-11-28
+
+**Windows `x64` V2.6 稳定维护线首轮易用性与接入体验升级**（完整继承 `windows-v2.6.0` 稳定性修复，聚焦统一跨线安装器、常用供应商预设与 Magpie 本机自动发现一键接入，不削弱任何自定义与治理能力）：
+
+### Added
+- **统一跨线下载安装器（LT / OLT × Windows / Linux 四线合一）**：
+  - 新增 Windows 一行 PowerShell 安装脚本 `install-leaderteam.ps1`（`irm https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/install-leaderteam.ps1 | iex`），升级 `Install-LeaderTeam.cmd` 支持单文件下载双击自举，升级 `install-leaderteam.sh` 支持 `curl -fsSL ... | bash` 管道直跑；
+  - 统一下载器 `lt-installer-standalone.mjs` 支持选择产品线（LT 闭源免费版 / OLT 开源维护版）、实时拉取当前系统适配的 GitHub Releases 版本列表、首次安装与修复安装（保留全部本地配置与历史数据）、缺失 DSH 时的官方下载引导、一键安全关闭运行中 DSH 客户端，以及旧版 LT / OLT 轨道识别与跨线切换强制确认守卫；产品内自动更新机制保持原样复用。
+- **常用供应商预设 + 全量自定义保留**：工作台「接入 → 供应商与 Key」抽屉新增 DeepSeek 官方、阿里云百炼 (DashScope)、智谱 BigModel (GLM)、OpenAI 官方、Anthropic 官方、Google Gemini、OpenRouter、远程 Magpie 等常用预设快填与自动发现入池选项，100% 保留自定义供应商 ID、4 种协议、Base URL、多 Key 与 7 角色备用链配置能力。
+- **Magpie 本机自动发现与一键接入**：新增本机回环端口安全探测（严格限 `127.0.0.1` / `localhost`，自动过滤 LT 内置轻量网关），发现本机 Magpie 后支持一键直连 DSH 原生通道（保留 `/quota` 并自动配齐角色）或经 LT 内置网关托管，同时保留手动接入远程 Magpie 及其他兼容网关入口与原 `Magpie 外部网关` 卡片编辑/刷新按钮。
+
+### Fixed
+- 修复安装器与内置自动更新器在发布资产同时包含独立衡账包 `lt-usage-plugin-*.tgz` 时仅按 `.tgz` 后缀匹配可能误选辅助包的问题，改为严格按当前平台匹配 `dsh-leaderteam-*.tgz` 主插件包。
+
+### Verification (`windows-v2.6.1`)
+- 主包全量单测 **456 通过、0 失败、3 跳过**；独立干净配置复测 `Run-Windows-Retest.ps1` 退出码 `0`（`installedVersion: "2.6.1"`，`sha256VerifiedAgainstSums: true`，19 次本地零费用模拟调用）；真机浏览器交互验收通过（统一下载器四线版本切换 + `/lt` 供应商预设与自定义编辑 + 本机模拟 Magpie 自动发现与一键接入，0 console/page error）；`rust/mapper/src` 零改动。
+
 ## [2.6.0] (`linux-v2.6.0`) - 2026-11-27
 
 **Linux `x86_64` 长期维护稳定线首版**（基于 `linux-v2.5.1` 河洛序三层 UI 与会话内 Single / Team 双模式基线，合入宿主兼容、会话级配置同步与全量回归稳定性修复，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：

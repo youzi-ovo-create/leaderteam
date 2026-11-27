@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title LeaderTeam One-Click Graphical Installer
+title LeaderTeam Unified One-Click Downloader & Installer
 
 set "SCRIPT_DIR=%~dp0"
 set "INSTALLER_JS="
@@ -18,8 +18,21 @@ if not defined INSTALLER_JS if exist "%SCRIPT_DIR%bin\lt-installer.mjs" (
   set "INSTALLER_JS=%SCRIPT_DIR%bin\lt-installer.mjs"
 )
 
+REM Single-file bootstrap: if user only downloaded Install-LeaderTeam.cmd, fetch lt-installer-standalone.mjs automatically
 if not defined INSTALLER_JS (
-  echo [LeaderTeam] Missing installer script under "%SCRIPT_DIR%". Please extract the full package first.
+  set "DL_DIR=%TEMP%\leaderteam-downloader"
+  if not exist "%DL_DIR%" mkdir "%DL_DIR%" >nul 2>nul
+  set "DL_JS=%DL_DIR%\lt-installer-standalone.mjs"
+  echo [LeaderTeam] Downloading unified installer script...
+  curl.exe -fsSL -o "%DL_JS%" "https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/installer/lt-installer-standalone.mjs" >nul 2>nul
+  if not exist "%DL_JS%" (
+    curl.exe -fsSL -o "%DL_JS%" "https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/latest/download/lt-installer-standalone.mjs" >nul 2>nul
+  )
+  if exist "%DL_JS%" set "INSTALLER_JS=%DL_JS%"
+)
+
+if not defined INSTALLER_JS (
+  echo [LeaderTeam] Could not locate or download lt-installer-standalone.mjs. Please check your network or download both files from GitHub Releases.
   pause
   exit /b 1
 )
@@ -68,6 +81,8 @@ if defined FOUND_DSH_EXE (
 )
 
 echo [LeaderTeam] Official DeepSeek Harness Desktop or Node.js was not detected on this computer.
-echo Please install Official DeepSeek Harness Desktop (^>= 0.2.2-rc.1) first, or set DSH_DESKTOP_DIR to your custom install folder, then double-click this installer again.
+echo Opening https://deepseekdsh.com so you can install Official DeepSeek Harness Desktop first...
+start "" "https://deepseekdsh.com" >nul 2>nul
+echo After installing Official DeepSeek Harness Desktop, double-click this installer again.
 pause
 exit /b 1

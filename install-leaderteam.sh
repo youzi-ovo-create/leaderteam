@@ -1,20 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALLER_JS=""
+# Supports both local invocation and one-line pipe:
+#   curl -fsSL https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/install-leaderteam.sh | bash
 
-if [[ -f "${SCRIPT_DIR}/bin/lt-installer.mjs" && -f "${SCRIPT_DIR}/leaderteam/core/installer.mjs" ]]; then
-  INSTALLER_JS="${SCRIPT_DIR}/bin/lt-installer.mjs"
-elif [[ -f "${SCRIPT_DIR}/installer/lt-installer-standalone.mjs" ]]; then
-  INSTALLER_JS="${SCRIPT_DIR}/installer/lt-installer-standalone.mjs"
-elif [[ -f "${SCRIPT_DIR}/lt-installer-standalone.mjs" ]]; then
-  INSTALLER_JS="${SCRIPT_DIR}/lt-installer-standalone.mjs"
-elif [[ -f "${SCRIPT_DIR}/bin/lt-installer.mjs" ]]; then
-  INSTALLER_JS="${SCRIPT_DIR}/bin/lt-installer.mjs"
-else
-  echo "[LeaderTeam] 未找到安装器脚本，请先完整解压安装包目录。" >&2
-  exit 1
+SCRIPT_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+INSTALLER_JS=""
+if [[ -n "${SCRIPT_DIR}" ]]; then
+  if [[ -f "${SCRIPT_DIR}/bin/lt-installer.mjs" && -f "${SCRIPT_DIR}/leaderteam/core/installer.mjs" ]]; then
+    INSTALLER_JS="${SCRIPT_DIR}/bin/lt-installer.mjs"
+  elif [[ -f "${SCRIPT_DIR}/installer/lt-installer-standalone.mjs" ]]; then
+    INSTALLER_JS="${SCRIPT_DIR}/installer/lt-installer-standalone.mjs"
+  elif [[ -f "${SCRIPT_DIR}/lt-installer-standalone.mjs" ]]; then
+    INSTALLER_JS="${SCRIPT_DIR}/lt-installer-standalone.mjs"
+  elif [[ -f "${SCRIPT_DIR}/bin/lt-installer.mjs" ]]; then
+    INSTALLER_JS="${SCRIPT_DIR}/bin/lt-installer.mjs"
+  fi
+fi
+
+if [[ -z "${INSTALLER_JS}" ]]; then
+  DL_DIR="${TMPDIR:-/tmp}/leaderteam-downloader"
+  mkdir -p "${DL_DIR}"
+  DL_JS="${DL_DIR}/lt-installer-standalone.mjs"
+  PRIMARY_URL="https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/installer/lt-installer-standalone.mjs"
+  FALLBACK_URL="https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/latest/download/lt-installer-standalone.mjs"
+  echo "[LeaderTeam] 正在下载统一安装器..." >&2
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "${DL_JS}" "${PRIMARY_URL}" || curl -fsSL -o "${DL_JS}" "${FALLBACK_URL}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "${DL_JS}" "${PRIMARY_URL}" || wget -qO "${DL_JS}" "${FALLBACK_URL}"
+  else
+    echo "[LeaderTeam] 未找到 curl 或 wget，请先安装或手动下载 lt-installer-standalone.mjs。" >&2
+    exit 1
+  fi
+  INSTALLER_JS="${DL_JS}"
 fi
 
 if command -v node >/dev/null 2>&1; then
@@ -34,5 +57,6 @@ for dsh_bin in "${DSH_DESKTOP_DIR:-}/deepseek-harness" "/opt/DeepSeek Harness/de
   fi
 done
 
-echo "[LeaderTeam] 未检测到 Node.js (>= 22.15) 或官方 DeepSeek Harness 客户端，请先安装后再次运行本脚本。" >&2
+echo "[LeaderTeam] 未检测到 Node.js (>= 22.15) 或官方 DeepSeek Harness 客户端。" >&2
+echo "请先前往 https://deepseekdsh.com 安装 DeepSeek Harness（或安装 Node.js >= 22.15）后重新运行本命令。" >&2
 exit 1
