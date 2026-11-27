@@ -1,43 +1,61 @@
 # LeaderTeam Releases (`V2.3+` 闭源免费公开发行仓)
 
-![Version](https://img.shields.io/badge/version-2.3.0-blue)
-![Platform](https://img.shields.io/badge/platform-Linux%20x64%20%7C%20Windows%20x64-success)
+![Linux Latest](https://img.shields.io/badge/Linux%20x64-linux--v2.5.1-blue)
+![Dual Platform](https://img.shields.io/badge/Linux%20%2B%20Windows%20x64-v2.3.0-success)
 ![DSH Host](https://img.shields.io/badge/DeepSeek%20Harness-0.2.2--rc.1%20%7C%200.2.2--rc.5-5b6ee1)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D22.15-339933)
 ![License](https://img.shields.io/badge/license-Closed--Source%20Free%20Distribution-orange)
 
-本仓库是 **LeaderTeam for DeepSeek Harness** `V2.3+` 演进线的独立公开制品发行仓，仅发布经双平台真机验收的标准安装包（`.tgz`）、SHA-256 校验文件、版本说明、用户文档与许可证文件。
+本仓库是 **LeaderTeam for DeepSeek Harness** `V2.3+` 演进线的独立公开制品发行仓，仅发布经实机验收的标准安装包（`.tgz`）、SHA-256 校验文件、版本说明、用户文档与许可证文件。
 
-> **发行性质声明（闭源免费公开发行）**：
-> - `LeaderTeam V2.3.0` 为**闭源免费公开发行版本**——预编译的 Rust 原生模块与专有演进源码不对外公开，但安装包**免费向所有个人开发者、学术研究、技术评测及企业内部研发开放下载使用**（具体授权边界与原开源组件权利保留条款见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）。
-> - 纯 Node.js 开源维护线（`V2.2.1`）继续在主仓公开维护。
+> **发行性质与平台解耦声明（闭源免费公开发行）**：
+> - `LeaderTeam V2.3+` 为**闭源免费公开发行版本**——预编译原生模块与专有演进源码不对外公开，但安装包**免费向所有个人开发者、学术研究、技术评测及企业内部研发开放下载使用**（具体授权边界与原开源组件权利保留条款见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）。
+> - 自 `V2.4` 起，**Linux 发行线（`linux-vX.Y.Z`）与 Windows 发行线（`windows-vX.Y.Z` / 双平台合包）按各自真机验证节奏独立发行**；Windows x64 用户在 Windows 独立版发布前请继续使用双平台正式版 `v2.3.0`。
+> - 纯 Node.js 开源维护线（`V2.2.x`）继续在开源主仓公开维护。
 
-| 发行轨道 | 仓库地址 | 当前版本 | 包含内容与许可协议 |
+| 发行轨道 / 标签 | 仓库与发行链接 | 覆盖平台 | 主要能力与定位 |
 |---|---|---|---|
-| **V2.3+ 闭源制品线** | [`youzi-ovo-create/dsh-leaderteam-releases`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases) | **`v2.3.0`** | 双平台预编译 Rust Node-API 模型映射核心（`Linux x86_64` + `Windows x64`）与宿主集成安装包、校验文件、用户文档（闭源免费发行，见 [LICENSE](LICENSE)） |
-| **V2.2.x 开源维护线** | [`youzi-ovo-create/dsh-leaderteam`](https://github.com/youzi-ovo-create/dsh-leaderteam) | **`v2.2.1`** | 纯 Node.js ESM 开源核心源码、安装包与历代工程实证报告（`Apache-2.0`） |
+| **Linux 最新发行 (`linux-v2.5.1`)** | [`linux-v2.5.1`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.5.1) | `Linux x86_64` (`glibc >= 2.39`) | 会话内 **Single / Team 双模式** + **河洛序三层 UI** + 内置轻量 API Key 网关 + 衡账三源对账 + 原生模型映射（DSH `0.2.2-rc.5`） |
+| **Linux 纯 Team 基线 (`linux-v2.4.0`)** | [`linux-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.4.0) | `Linux x86_64` (`glibc >= 2.39`) | 纯 Team 自治治理模式 + 内置轻量 API Key 网关 + 原生工作台 `/lt` + 衡账三源对账 + 原生模型映射（DSH `0.2.2-rc.5`） |
+| **双平台基线 (`v2.3.0`)** | [`v2.3.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/v2.3.0) | `Linux x86_64` + `Windows x64` | 双平台预编译 Rust Node-API 模型映射核心与异构执行备援链（支持 Windows Desktop `0.2.2-rc.1` 与 CLI/Web `0.2.2-rc.5`） |
+| **V2.2.x 开源维护线** | [`youzi-ovo-create/dsh-leaderteam`](https://github.com/youzi-ovo-create/dsh-leaderteam) | 跨平台纯 Node.js ESM | 纯 `Apache-2.0` 开源核心源码、安装包与历代工程实证报告 |
 
 ---
 
-## 快速安装（`v2.3.0`）
+## 快速安装
 
 ### 1. 经实机验证的平台、宿主兼容范围与首次安装要求
 
 - **支持平台与架构**：
-  - `Linux x86_64`（`glibc >= 2.39`，已于 Ubuntu 24.04 x86_64 及 WSL2 Ubuntu-24.04 实机验证）
-  - `Windows x64`（同时支持独立 Node.js 进程与官方桌面端 Electron 进程）
-  - *非支持平台行为说明*：`macOS` 加载时会自动跳过原生映射模块（不启用 V2.3 原生映射特性）；`Linux arm64`、`Windows arm64` 及基于 `musl` 的 Linux（如 Alpine）不在本双平台包二进制支持范围内，加载时会明确报错提示缺少对应平台二进制（Fail-Closed）。
+  - `Linux x86_64`（`glibc >= 2.39`，已于 Ubuntu 24.04 x86_64 实机验证）：推荐使用最新 **`linux-v2.5.1`**（或纯 Team 基线 **`linux-v2.4.0`**）；
+  - `Windows x64`（独立 Node.js 与官方桌面端 Electron）：当前请使用双平台正式版 **`v2.3.0`**；
+  - *非支持平台行为说明*：`macOS` 加载时会自动跳过原生映射模块；`Linux arm64`、`Windows arm64` 及基于 `musl` 的 Linux（如 Alpine）不在当前二进制包支持范围内（Fail-Closed）。
 - **Node.js 要求**：`>= 22.15`（推荐 `22.19+` 或 `24.x`）。
 - **DeepSeek Harness 宿主兼容范围**：
-  - 已通过端到端实机验证：**`0.2.2-rc.1`**（官方 Windows Desktop）与 **`0.2.2-rc.5`**（CLI / Web）；
-  - 未经实机验证的中间或后续宿主版本默认维持 **Fail-Closed** 拒绝受保护加载（可通过包内 `lt-doctor --check-host` 离线预检）。
+  - `linux-v2.5.1` / `linux-v2.4.0`：已通过实机全量验收 **`0.2.2-rc.5`**（CLI / Web）；
+  - `v2.3.0`：已通过实机验收 **`0.2.2-rc.1`**（官方 Windows Desktop）与 **`0.2.2-rc.5`**（CLI / Web）；
+  - 未经实机验证的宿主版本默认维持 **Fail-Closed** 拒绝受保护加载（可通过包内 `lt-doctor --check-host` 离线预检）。
 - **首次安装前置要求**：
   - **Linux / Web CLI（`--profile web`）**：执行 `dsh plugin --profile web add` 前，需确保系统 `PATH` 中包含可用的 `node` 与 `pnpm`（可通过 `corepack enable pnpm` 启用）；
-  - **官方 Windows Desktop（`--profile desktop`）**：① 首次安装前请**先启动一次官方 DeepSeek Harness Desktop 客户端**以完成 `desktop` profile 初始化，随后**完全退出客户端**；② 请使用**官方桌面客户端自带的 `dsh` CLI**（位于 `<客户端安装目录>\resources\runtime\cli\bin\dsh.cmd`）执行 `--profile desktop` 安装命令（独立版 `0.2.2-rc.5` CLI 将 `desktop` profile 保留给桌面客户端管理，独立 CLI 自身请使用 `--profile web`）。
+  - **官方 Windows Desktop（`--profile desktop`，`v2.3.0`）**：① 首次安装前请**先启动一次官方 DeepSeek Harness Desktop 客户端**以完成 `desktop` profile 初始化，随后**完全退出客户端**；② 请使用**官方桌面客户端自带的 `dsh` CLI**（位于 `<客户端安装目录>\resources\runtime\cli\bin\dsh.cmd`）执行 `--profile desktop` 安装命令。
 
 ### 2. 下载校验与一行安装
 
-前往 [Releases 页面 (`v2.3.0`)](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/v2.3.0) 下载，或通过命令行下载校验后安装：
+#### A. Linux `x86_64` 最新发行（`linux-v2.5.1`）
+
+```bash
+# 1. 下载安装包与校验文件并核对 SHA-256
+curl -fLO https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/download/linux-v2.5.1/dsh-leaderteam-2.5.1-linux-x64.tgz
+curl -fLO https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/download/linux-v2.5.1/SHA256SUMS.txt
+grep "dsh-leaderteam-2.5.1-linux-x64.tgz" SHA256SUMS.txt | sha256sum -c -
+
+# 2. 安装至 DSH web profile
+dsh plugin --profile web add ./dsh-leaderteam-2.5.1-linux-x64.tgz
+```
+
+> 如需纯 Team 治理基线（不含 Single / Team 双模式），可下载 [`linux-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.4.0) 下的 `dsh-leaderteam-2.4.0-linux-x64.tgz` 并以相同方式安装。
+
+#### B. 官方 Windows `x64` Desktop / 双平台基线（`v2.3.0`）
 
 ```bash
 # 1. 下载安装包与校验文件并核对 SHA-256
@@ -45,10 +63,7 @@ curl -fLO https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/d
 curl -fLO https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/download/v2.3.0/SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt
 
-# 2A. Linux x86_64 或独立 CLI/Web 环境安装（web profile）
-dsh plugin --profile web add ./dsh-leaderteam-2.3.0.tgz
-
-# 2B. 官方 Windows x64 Desktop 环境安装（desktop profile，需先退出已初始化过的桌面客户端，并使用桌面端自带 dsh CLI）
+# 2. 官方 Windows x64 Desktop 环境安装（先完全退出已初始化的桌面客户端，并使用桌面端自带 dsh CLI）
 dsh plugin --profile desktop add ./dsh-leaderteam-2.3.0.tgz
 ```
 
@@ -56,10 +71,10 @@ dsh plugin --profile desktop add ./dsh-leaderteam-2.3.0.tgz
 
 ---
 
-## 与开源版 `v2.2.1` 的升级与回退
+## 版本升级与回退
 
-- **从开源版 `v2.2.1` 升级至 `v2.3.0`**：直接对同一 profile 执行 `dsh plugin --profile <web|desktop> add ./dsh-leaderteam-2.3.0.tgz` 即可原地替换升级，`<DSH_HOME>/leaderteam/config/leaderteam.local.json` 与既有团队历史账本自动保留。
-- **从 `v2.3.0` 回退至开源版 `v2.2.1`**：从开源主仓下载 [`dsh-leaderteam-2.2.1.tgz`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/v2.2.1) 并执行 `dsh plugin --profile <web|desktop> add ./dsh-leaderteam-2.2.1.tgz` 即可回退；`v2.3.0` 运行产生的 `mapping.jsonl` 会被 `v2.2.1` 安全忽略，不影响原有会话与配置读取。
+- **在 `v2.3.0`、`linux-v2.4.0`、`linux-v2.5.1` 之间切换或升级**：直接对同一 profile 执行 `dsh plugin --profile web add ./<目标版本>.tgz` 即可原地替换，`<DSH_HOME>/leaderteam/config/leaderteam.local.json`、网关凭据库及团队账本自动保留。
+- **回退至开源版 `v2.2.1`**：从开源主仓下载 [`dsh-leaderteam-2.2.1.tgz`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/v2.2.1) 并执行 `dsh plugin --profile <web|desktop> add ./dsh-leaderteam-2.2.1.tgz` 即可回退。
 
 ---
 

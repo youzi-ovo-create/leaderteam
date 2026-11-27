@@ -2,6 +2,29 @@
 
 本项目的所有重要版本变更均记录于此文件，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [2.5.1] (`linux-v2.5.1`) - 2026-11-27
+
+**Linux `x86_64` 独立发行版**（会话内 Single / Team 双模式 + 河洛序三层 UI 重构冻结终验版，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
+
+### Added
+- **会话内 Single / Team 双模式（包含全部 V2.5.0 r2 能力）**：
+  - 同一会话支持在 **Single（轻量化单模型直跑）** 与 **Team（多模型分权自治治理）** 之间安全往返切换，无需重建会话或迁移上下文；
+  - 引入 7 重状态切换守卫（执行中/在途成员锁定 `MODE_SWITCH_LOCKED`、空闲边界放行、持久化模式记录与切换历史审计），并在 Single 模式下保持安全门零误拦与独立计量隔离；
+  - 完整对齐 `lt.public.v1` 双模式控制接口，并在 DSH 头部与空白页胶囊及 `/lt` 工作台同步展示与切换当前会话模式。
+- **河洛序三层 UI 重构（V2.5.1）**：
+  - 全面重构 `/lt` 独立工作台、DSH 侧边栏控制面板与衡账观测界面的信息层级与视觉排版，保留纯白默认底色、玄墨暗色、河洛序原色及自定义主题；
+  - 强化模式胶囊异步预设加载稳定性、空状态引导与同会话 DSH ⇄ LT 无损快切体验。
+
+### Fixed & Hardened
+- 修复全新 profile 首次添加供应商并自动同步至 DSH `0.2.2-rc.5` 设置（含 Qwen / DeepSeek 等通道）及冷重启同步凭据/端口的问题；
+- 修复同工作目录已存在会话创建时被误复用覆写预设的问题（在调用创建前显式拒绝 `SESSION_ALREADY_EXISTS`）；
+- 修复跨协议流式错误账本与验证状态落盘时序、多宿主成员存活保护及多 React 渲染槽位 Hook 稳定性问题。
+
+### Known Limitations (`linux-v2.5.1`)
+- 本次发行包仅覆盖 **`Linux x86_64`（`glibc >= 2.39`）** 与 DeepSeek Harness **`0.2.2-rc.5`**（CLI / Web）；Windows x64 用户请继续使用双平台 `v2.3.0` 直至 Windows 独立发行线发布；
+- 衡账默认读取 DSH `session.v4.jsonl.zstd` 压缩会话日志；
+- 若干后续探索发现的边缘缺陷（失败尝试用量统计、多标签并发改价覆盖、衡账跨日日期筛选窗口、手动实调严校验及 40 模型批量探测分页等）已纳入下一版 V2.6 维护线修复，不影响 V2.5.1 核心双模式与河洛序工作台主路径使用。
+
 ## [2.4.0] (`linux-v2.4.0`) - 2026-11-27
 
 **Linux `x86_64` 独立发行版**（纯 Team 模式产品化终验冻结版，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
