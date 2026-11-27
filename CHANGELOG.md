@@ -2,6 +2,34 @@
 
 本项目的所有重要版本变更均记录于此文件，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [2.5.1] (`windows-v2.5.1`) - 2026-11-27
+
+**Windows `x64` 独立发行版**（会话内 Single / Team 无损双模协作 + 河洛序三层工作台 UI + 独立衡账 `lt-usage-plugin-windows-v2.5.1.tgz` + 全套 Windows 真机适配，闭源免费公开发行）：
+
+### Added
+- **河洛序三层工作台与会话内 Single / Team 双模式**：完整支持 `/lt` 河洛序工作台与 DSH 侧栏双模热切换（含 7 重安全锁守卫、纯 Single 零 `teams/` 磁盘开销）、四步模型接入向导、私有映射工作台及衡账三源对账；随附 Windows 适配版独立衡账包 `lt-usage-plugin-windows-v2.5.1.tgz`。
+- **零命令行图形化安装器与双平台分轨自动更新**：提供 `Install-LeaderTeam.cmd` + `lt-installer-standalone.mjs`（自动识别自定义安装路径如 `D:\Apps\DeepSeek-Harness`、复用官方桌面端内置 Electron 运行时、自动清理遗留补丁），原生过滤 `windows-v*` / `linux-v*` 发行标签防止跨平台误装。
+- **双 ABI 预编译原生映射模块**：内置同时通过 Node.js v24 (ABI 137) 与官方桌面端 Electron 44.7 (ABI 149) 实测的 `mapper.win32-x64.node`，并完整保留经验证的 `mapper.linux-x64.node`。
+
+### Fixed (Windows Platform, Security & UI Hardening)
+- **Windows `pwsh` 词法与沙盒边界加固**：新增 `pwsh` 词法方言保留 `\` 路径分隔符并解码反引号（`` ` ``）混淆，阻断 `..\` 越界、反引号转义命令、越界 `workdir` 及工作区内 NTFS Junction 逃逸；跨字面路径与 Junction 物理路径拦截凭据（`vault.json`/`.credentials.yaml`/`.env`）与受管配置越权读写。
+- **NTFS 目录联接、原生 DLL 影子加载与中文路径热升级**：网关与衡账全面经 `realpathSync.native` 归一化消除 `~/.dsh` Junction 双实例冲突；`mapper.mjs` 通过内容寻址影子副本加载消除 Windows `LoadLibraryW` 升级锁；更新器在悬空 `%LOCALAPPDATA%\pnpm\store` 联接下统一回退至 `<DSH_HOME>/leaderteam/pnpm-home`，精准核验成员在途状态并无壳直调官方桌面端 Electron CLI 保护中文路径；修复 `autoAdoptHost` 重复路由推入与 Node 24 截断 Zstd 帧校验。
+- **`/lt` 河洛工作台展示修正**：修复 `/lt` 对话流中直接承载 `ev.data.content` 的用户消息被渲染为 `(空消息)` 的问题（并过滤内部 `runtime-context` 快照）；修复空闲态通过「本会话配置」切换模型后 `/lt` 输入区底部模型胶囊未随本会话配置实时刷新的问题。
+
+## [2.5.0] (`windows-v2.5.0`) - 2026-11-27
+
+**Windows `x64` 独立发行版**（会话内 Single / Team 无损双模协作首版 · 保留经典 `lt-v24-*` 多标签工作台 UI，闭源免费公开发行）：
+
+### Added & Fixed
+- **会话内 Single / Team 无损切换**：支持同一会话空闲边界在 `Team` 与 `Single` 模式间零重建往返切换，纯 `Single` 会话零 `teams/` 目录开销；完整合入 Issues #1–#4、`autoAdoptHost` 去重、Windows `pwsh` 安全门、NTFS Junction 归一化、原生 DLL 影子加载、一键安装器及经真机实测的 `2.5.0 → 2.5.1 → 2.5.0` 无损升级/回滚链路。
+
+## [2.4.0] (`windows-v2.4.0`) - 2026-11-27
+
+**Windows `x64` 独立发行版**（纯 Team 自治协作产品化首版 · 严格保持 `0` 处 V2.5 双模词汇，闭源免费公开发行）：
+
+### Added & Fixed
+- **内置轻量 API Key 网关 + 原生工作台 `/lt` + 私有 Mapper Studio + 衡账三源对账**：完整合入 Issues #1–#4、Windows `pwsh` 安全门、NTFS Junction 归一化、原生 DLL 影子加载、一键安装器、纯 Team `/api/lt-v24/sessions` 默认预设修复，以及经真机实测的 `2.4.0 → 2.5.0 → 2.4.0` 无损升级/回滚链路。
+
 ## [2.5.1] (`linux-v2.5.1`) - 2026-11-27
 
 **Linux `x86_64` 独立发行版**（会话内 Single / Team 双模式 + 河洛序三层 UI 重构冻结终验版，闭源免费公开发行，详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES)）：
