@@ -23,11 +23,17 @@ if not defined INSTALLER_JS (
   set "DL_DIR=%TEMP%\leaderteam-downloader"
   if not exist "%DL_DIR%" mkdir "%DL_DIR%" >nul 2>nul
   set "DL_JS=%DL_DIR%\lt-installer-standalone.mjs"
+  set "DL_TMP=%DL_DIR%\lt-installer-standalone.tmp.mjs"
+  if exist "%DL_TMP%" del /f /q "%DL_TMP%" >nul 2>nul
   echo [LeaderTeam] Downloading unified installer script...
-  curl.exe -fsSL -o "%DL_JS%" "https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/installer/lt-installer-standalone.mjs" >nul 2>nul
-  if not exist "%DL_JS%" (
-    curl.exe -fsSL -o "%DL_JS%" "https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/latest/download/lt-installer-standalone.mjs" >nul 2>nul
+  curl.exe -fsSL -o "%DL_TMP%" "https://raw.githubusercontent.com/youzi-ovo-create/leaderteam/main/installer/lt-installer-standalone.mjs" >nul 2>nul
+  if not exist "%DL_TMP%" (
+    curl.exe -fsSL -o "%DL_TMP%" "https://github.com/youzi-ovo-create/leaderteam/releases/latest/download/lt-installer-standalone.mjs" >nul 2>nul
   )
+  if not exist "%DL_TMP%" (
+    curl.exe -fsSL -o "%DL_TMP%" "https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/installer/lt-installer-standalone.mjs" >nul 2>nul
+  )
+  if exist "%DL_TMP%" move /y "%DL_TMP%" "%DL_JS%" >nul 2>nul
   if exist "%DL_JS%" set "INSTALLER_JS=%DL_JS%"
 )
 

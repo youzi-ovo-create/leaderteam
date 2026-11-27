@@ -1,6 +1,6 @@
 # LeaderTeam Releases (`V2.3+` 闭源免费公开发行仓)
 
-![Windows Latest](https://img.shields.io/badge/Windows%20x64-windows--v2.6.1%20(Stable)-0078d4)
+![Windows Latest](https://img.shields.io/badge/Windows%20x64-windows--v2.6.2%20(Stable)-0078d4)
 ![Linux Latest](https://img.shields.io/badge/Linux%20x64-linux--v2.6.0%20(Stable)-blue)
 ![DSH Host](https://img.shields.io/badge/DeepSeek%20Harness-%3E%3D0.2.2--alpha.2%20%3C1.0.0-5b6ee1)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D22.15-339933)
@@ -26,7 +26,7 @@
 
 | 平台 / 发行轨道 | 最新可用 Release | 同系列可选 / 历史版本 | 核心能力与实测宿主范围 |
 |---|---|---|---|
-| **Windows `x64` 最新稳定版** | **[`windows-v2.6.1`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.6.1)**（含独立衡账包 `lt-usage-plugin-windows-v2.6.1.tgz`、验证包与统一安装器） | [`windows-v2.6.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.6.0) · [`windows-v2.5.1`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.5.1) · [`windows-v2.5.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.5.0) · [`windows-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.4.0) | **V2.6 稳定维护线（易用性与接入体验升级）**：统一 LT / OLT × Windows / Linux 四线下载安装器（一条 PowerShell/Shell 命令或单文件 `Install-LeaderTeam.cmd` 双击启动，支持版本选择/修复安装/一键关闭运行中 DSH/防误切轨道）、工作台常用供应商预设（保留全量自定义）、本机 Magpie 自动发现一键接入与远程 Magpie 手动接入；完整继承 `v2.6.0` 全部稳定性修复；兼容 DSH `>=0.2.2-alpha.2 <1.0.0` |
+| **Windows `x64` 最新稳定版** | **[`windows-v2.6.2`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.6.2)**（含独立衡账包 `lt-usage-plugin-windows-v2.6.2.tgz`、验证包与统一安装器） | [`windows-v2.6.1`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.6.1) · [`windows-v2.6.0`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.6.0) · [`windows-v2.5.1`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.5.1) · [`windows-v2.5.0`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.5.0) · [`windows-v2.4.0`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.4.0) | **V2.6 稳定维护线（安装链路加固版）**：修复 PowerShell 5.1 `irm \| iex` UTF-8 BOM 解析失败与跨盘符 NTFS Junction `.dsh` pnpm 仓库安装阻断，精准区分进程占用/文件锁/权限异常并内联一键关闭入口；完整包含 `v2.6.1` 统一下载安装器、常用供应商预设与 Magpie 本机自动发现一键接入，以及 `v2.6.0` 全部稳定性修复；兼容 DSH `>=0.2.2-alpha.2 <1.0.0` |
 | **Linux `x86_64` 最新稳定版** | **[`linux-v2.6.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.6.0)** | [`linux-v2.5.1`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.5.1) · [`linux-v2.5.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.5.0) · [`linux-v2.4.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.4.0) | **V2.6 稳定维护基线**：会话内 Single / Team 双模式 + 河洛序三层 UI + 宿主兼容与会话级配置同步 + 失败尝试计费与公共账单一致性 + 跨窗口字段级改价合并 + 四协议实调严校验与端点竞态防护 + 热回滚完整性与配置预检 + 跨架构更新隔离 + 衡账未压缩 `session.v4.jsonl` 读取与时间窗联动；`glibc >= 2.39`，Ubuntu 24.04 + DSH `0.2.2-rc.5` CLI/Web 52/52 实机全量验收通过 |
 | **双平台历史基线 (`v2.3.0`)** | [`v2.3.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/v2.3.0) | — | 双平台预编译 Rust Node-API 模型映射核心与异构执行备援链（支持 Windows Desktop `0.2.2-rc.1` 与 CLI/Web `0.2.2-rc.5`） |
 | **V2.2.x 开源维护线** | [`youzi-ovo-create/dsh-leaderteam`](https://github.com/youzi-ovo-create/dsh-leaderteam) | [`windows-v2.2.3`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/windows-v2.2.3) / [`linux-v2.2.3`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/linux-v2.2.3) / [`v2.2.1`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/v2.2.1) | 纯 Node.js ESM `Apache-2.0` 开源核心源码、安装包与历代工程实证报告 |
@@ -38,12 +38,12 @@
 ### 1. 经实机验证的平台、宿主兼容范围与首次安装要求
 
 - **支持平台与架构**：
-  - **`Windows x64`**（独立 Node.js 与官方桌面端 Electron）：推荐使用最新稳定版 **[`windows-v2.6.1`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.6.1)**（历史系列保留 `windows-v2.6.0` / `windows-v2.5.1` / `windows-v2.5.0` / `windows-v2.4.0`）；
+  - **`Windows x64`**（独立 Node.js 与官方桌面端 Electron）：推荐使用最新稳定版 **[`windows-v2.6.2`](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.6.2)**（历史系列保留 `windows-v2.6.1` / `windows-v2.6.0` / `windows-v2.5.1` / `windows-v2.5.0` / `windows-v2.4.0`）；
   - **`Linux x86_64`**（`glibc >= 2.39`，已于 Ubuntu 24.04 x86_64 实机验证）：推荐使用最新稳定版 **[`linux-v2.6.0`](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/linux-v2.6.0)**（历史系列保留 `linux-v2.5.1` / `linux-v2.5.0` / `linux-v2.4.0`）；
   - *非支持平台行为说明*：`macOS` 加载时会自动跳过原生映射模块；`Linux arm64`、`Windows arm64` 及基于 `musl` 的 Linux（如 Alpine）不在当前二进制包支持范围内（Fail-Closed）。
 - **Node.js 要求**：`>= 22.15`（推荐 `22.19+` 或 `24.x`；Windows 统一安装器亦可自动复用官方桌面端内置 Electron 运行时，无需预装 Node.js）。
 - **DeepSeek Harness 宿主兼容范围**（详见《[DSH 宿主版本兼容性列表](docs/10-DSH宿主兼容性列表.md)》）：
-  - `windows-v2.6.1` / `windows-v2.6.0` / `windows-v2.5.1` / `windows-v2.5.0` / `windows-v2.4.0`：支持 **`>=0.2.2-alpha.2 <1.0.0`**（含结构契约自适应校验，官方 Windows Desktop `0.2.2-rc.1` 实机全链路验收；缺失安全门管道的 `<= 0.2.1-rc.5` 保持 Fail-Closed 拦截）；
+  - `windows-v2.6.2` / `windows-v2.6.1` / `windows-v2.6.0` / `windows-v2.5.1` / `windows-v2.5.0` / `windows-v2.4.0`：支持 **`>=0.2.2-alpha.2 <1.0.0`**（含结构契约自适应校验，官方 Windows Desktop `0.2.2-rc.1` 实机全链路验收；缺失安全门管道的 `<= 0.2.1-rc.5` 保持 Fail-Closed 拦截）；
   - `linux-v2.6.0`：支持 **`>=0.2.2-alpha.2 <1.0.0`**（含结构契约自适应校验，Ubuntu 24.04 + DSH **`0.2.2-rc.5`** CLI/Web 全量 52/52 实机验收）；`linux-v2.5.1` / `linux-v2.5.0` / `linux-v2.4.0` 已通过 **`0.2.2-rc.5`**（CLI / Web）实机验收；
   - `v2.3.0`：已通过实机验收 **`0.2.2-rc.1`**（官方 Windows Desktop）与 **`0.2.2-rc.5`**（CLI / Web）。
 
@@ -51,17 +51,17 @@
 
 自动识别当前操作系统与架构、检测并复用已安装的 DeepSeek Harness（缺失时引导至 [https://deepseekdsh.com](https://deepseekdsh.com) 下载）、自动识别已有 LT / OLT 轨道并防误切，支持**首次安装、版本选择、修复安装、一键关闭运行中 DSH、SHA-256 强校验与安装后直启**：
 
-- **Windows（方式 A · PowerShell 一条命令，复制回车即弹出图形化安装页）**：
+- **Windows（方式 A · PowerShell 一条命令，兼容 Windows PowerShell 5.1 与 PowerShell 7，复制回车即弹出图形化安装页）**：
 
 ```powershell
-irm https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/install-leaderteam.ps1 | iex
+irm https://raw.githubusercontent.com/youzi-ovo-create/leaderteam/main/install-leaderteam.ps1 | iex
 ```
 
-- **Windows（方式 B · 单文件双击，零命令行）**：在 [`windows-v2.6.1` Release 页面](https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/tag/windows-v2.6.1) 只下载单个 **`Install-LeaderTeam.cmd`** 并双击运行，脚本会自动拉取统一下载器本体并打开浏览器安装向导（不再需要手动配齐多个文件）。
+- **Windows（方式 B · 单文件双击，零命令行）**：在 [`windows-v2.6.2` Release 页面](https://github.com/youzi-ovo-create/leaderteam/releases/tag/windows-v2.6.2) 只下载单个 **`Install-LeaderTeam.cmd`** 并双击运行，脚本会自动拉取统一下载器本体并打开浏览器安装向导（不再需要手动配齐多个文件）。
 - **Linux / WSL2（一条 Shell 命令）**：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/install-leaderteam.sh | bash
+curl -fsSL https://raw.githubusercontent.com/youzi-ovo-create/leaderteam/main/install-leaderteam.sh | bash
 ```
 
 > 安装完成后，打开 DeepSeek Harness 并切入 **Leader Team 工作台（`/lt`） → 「接入」 → 「供应商与 Key」**：
@@ -71,22 +71,22 @@ curl -fsSL https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-rel
 
 ### 3. 手动下载 `.tgz` 与离线命令行安装（备选）
 
-#### A. Windows `x64` 最新稳定版（`windows-v2.6.1`）
+#### A. Windows `x64` 最新稳定版（`windows-v2.6.2`）
 
 ```powershell
 # 1. 下载 Windows x64 安装包与校验文件并核对 SHA-256
-curl.exe -fLO https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/download/windows-v2.6.1/dsh-leaderteam-2.6.1.tgz
-curl.exe -fLO https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/download/windows-v2.6.1/SHA256SUMS.txt
-Get-FileHash .\dsh-leaderteam-2.6.1.tgz -Algorithm SHA256
+curl.exe -fLO https://github.com/youzi-ovo-create/leaderteam/releases/download/windows-v2.6.2/dsh-leaderteam-2.6.2.tgz
+curl.exe -fLO https://github.com/youzi-ovo-create/leaderteam/releases/download/windows-v2.6.2/SHA256SUMS.txt
+Get-FileHash .\dsh-leaderteam-2.6.2.tgz -Algorithm SHA256
 
 # 2A. 官方 Windows x64 Desktop 环境安装（先完全退出已初始化的桌面端，并使用桌面端自带 dsh.cmd）
-dsh plugin --profile desktop add .\dsh-leaderteam-2.6.1.tgz
+dsh plugin --profile desktop add .\dsh-leaderteam-2.6.2.tgz
 
 # 2B. 独立 CLI / Web 环境安装（web profile）
-dsh plugin --profile web add .\dsh-leaderteam-2.6.1.tgz
+dsh plugin --profile web add .\dsh-leaderteam-2.6.2.tgz
 ```
 
-> `windows-v2.6.1` 随附独立衡账包 `lt-usage-plugin-windows-v2.6.1.tgz`、独立复测包 `windows-v2.6.1-verification.zip` 与统一跨线安装脚本。
+> `windows-v2.6.2` 随附独立衡账包 `lt-usage-plugin-windows-v2.6.2.tgz`、独立复测包 `windows-v2.6.2-verification.zip` 与统一跨线安装脚本。
 
 #### B. Linux `x86_64` 最新稳定版（`linux-v2.6.0`）
 
@@ -108,7 +108,7 @@ dsh plugin --profile web add ./dsh-leaderteam-2.6.0-linux-x64.tgz
 
 ## 版本升级与回退
 
-- **在同平台各版本（`v2.3.0` / `v2.4.0` / `v2.5.0` / `v2.5.1` / `v2.6.0` / `v2.6.1`）之间切换或升级**：可在 `/lt` 控制台「设置 → 版本更新与兼容」点击一键升级，或使用统一下载安装器选择目标版本/修复安装，`<DSH_HOME>/leaderteam/` 下的本地配置、网关凭据库、单会话覆盖（`session-configs/`）及团队账本自动保留。
+- **在同平台各版本（`v2.3.0` / `v2.4.0` / `v2.5.0` / `v2.5.1` / `v2.6.0` / `v2.6.1` / `v2.6.2`）之间切换或升级**：可在 `/lt` 控制台「设置 → 版本更新与兼容」点击一键升级，或使用统一下载安装器选择目标版本/修复安装，`<DSH_HOME>/leaderteam/` 下的本地配置、网关凭据库、单会话覆盖（`session-configs/`）及团队账本自动保留。
 - **切换至开源版（`V2.2.3` / `V2.2.2` / `v2.2.1`）**：从开源主仓下载对应平台安装包（如 [`linux-v2.2.3`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/linux-v2.2.3) / [`windows-v2.2.3`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/windows-v2.2.3) 或历史 [`v2.2.1`](https://github.com/youzi-ovo-create/dsh-leaderteam/releases/tag/v2.2.1)）并执行 `dsh plugin --profile <web|desktop> add ./dsh-leaderteam-<version>.tgz` 即可切换。
 
 ---

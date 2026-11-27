@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Supports both local invocation and one-line pipe:
-#   curl -fsSL https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/install-leaderteam.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/youzi-ovo-create/leaderteam/main/install-leaderteam.sh | bash
 
 SCRIPT_DIR=""
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
@@ -26,17 +26,20 @@ if [[ -z "${INSTALLER_JS}" ]]; then
   DL_DIR="${TMPDIR:-/tmp}/leaderteam-downloader"
   mkdir -p "${DL_DIR}"
   DL_JS="${DL_DIR}/lt-installer-standalone.mjs"
-  PRIMARY_URL="https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/installer/lt-installer-standalone.mjs"
-  FALLBACK_URL="https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases/latest/download/lt-installer-standalone.mjs"
+  DL_TMP="${DL_DIR}/lt-installer-standalone.$$.tmp.mjs"
+  PRIMARY_URL="https://raw.githubusercontent.com/youzi-ovo-create/leaderteam/main/installer/lt-installer-standalone.mjs"
+  FALLBACK_URL="https://github.com/youzi-ovo-create/leaderteam/releases/latest/download/lt-installer-standalone.mjs"
+  LEGACY_URL="https://raw.githubusercontent.com/youzi-ovo-create/dsh-leaderteam-releases/main/installer/lt-installer-standalone.mjs"
   echo "[LeaderTeam] 正在下载统一安装器..." >&2
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -o "${DL_JS}" "${PRIMARY_URL}" || curl -fsSL -o "${DL_JS}" "${FALLBACK_URL}"
+    curl -fsSL -o "${DL_TMP}" "${PRIMARY_URL}" || curl -fsSL -o "${DL_TMP}" "${FALLBACK_URL}" || curl -fsSL -o "${DL_TMP}" "${LEGACY_URL}"
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO "${DL_JS}" "${PRIMARY_URL}" || wget -qO "${DL_JS}" "${FALLBACK_URL}"
+    wget -qO "${DL_TMP}" "${PRIMARY_URL}" || wget -qO "${DL_TMP}" "${FALLBACK_URL}" || wget -qO "${DL_TMP}" "${LEGACY_URL}"
   else
     echo "[LeaderTeam] 未找到 curl 或 wget，请先安装或手动下载 lt-installer-standalone.mjs。" >&2
     exit 1
   fi
+  mv -f "${DL_TMP}" "${DL_JS}"
   INSTALLER_JS="${DL_JS}"
 fi
 

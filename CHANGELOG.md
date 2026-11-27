@@ -2,6 +2,18 @@
 
 本项目的所有重要版本变更均记录于此文件，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [2.6.2] (`windows-v2.6.2`) - 2026-11-28
+
+**Windows `x64` 安装链路缺陷修复维护版**（针对 `v2.6.1` 首次人工零 AI 验收暴露的 PowerShell 入口与 NTFS Junction 安装故障专项修复，不覆盖既有 `windows-v2.6.1` 制品）：
+
+### Fixed
+- **PowerShell 公开一键命令 `AmpersandNotAllowed` 根治**：移除 `install-leaderteam.ps1` 首部 UTF-8 BOM（避免 Windows PowerShell 5.1 `irm | iex` 将首行 `\uFEFF#` 当命令解析触发 `&` 语法错误）；改用 `& { ... } @args` + `return` 避免关闭交互终端；强制 TLS 1.2+ 兼容并采用临时文件原子更新下载器脚本。
+- **跨盘符 NTFS Junction `.dsh` 安装/升级/回滚修复**：在统一下载器、核心安装器与内置自动更新器中，当 `%LOCALAPPDATA%\pnpm\store` 为失效目录联接时，优先读取并尊重目标 profile `node_modules/.modules.yaml` 已绑定的健康 `storeDir`（经 `realpathSync.native` 归一化），消除 `ERR_PNPM_UNEXPECTED_STORE`；遇到目录迁移或旧 store 失效导致的 `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE` / `STORE` 冲突时，自动仅对 `node_modules` 做原子备份重建（失败自动还原，零改动已有配置、凭据、会话与团队历史）。
+- **错误精准分类与一键安全关闭内联入口**：修复 `dsh plugin add` 报错丢弃 `stdout` 且因命令行含 `DeepSeek Harness.exe` 被误报为「DSH 正在运行或目录被占用」的缺陷；严格区分运行中进程（`DESKTOP_CLIENT_RUNNING`，错误框内联「一键安全关闭 DSH 并重试安装」按钮）、pnpm 仓库路径冲突、文件锁（`EBUSY`）与权限异常（`EPERM`/`EACCES`），并展示失败操作、涉及路径及可展开完整诊断详情。
+
+### Verification (`windows-v2.6.2`)
+- 主包全量单测 **460 通过、0 失败、3 跳过**；真实克隆跨盘符 NTFS Junction（`v2.3.1` + 失效 `%LOCALAPPDATA%\pnpm\store` + `D:\Apps\DeepSeek-Harness`）零 mock 连续通过 `2.3.1 → 2.6.2` 安装、`2.6.2 → 2.6.1` 回滚、`2.6.1 → 2.6.2` 升级、`2.6.2` 修复安装且配置/会话/团队历史 100% 完整保留；独立干净配置复测 `Run-Windows-Retest.ps1` 退出码 `0`（19 次本地模拟调用）；真实 GitHub Raw 地址在 Windows PowerShell 5.1 下直接实测通过。
+
 ## [2.6.1] (`windows-v2.6.1`) - 2026-11-28
 
 **Windows `x64` V2.6 稳定维护线首轮易用性与接入体验升级**（完整继承 `windows-v2.6.0` 稳定性修复，聚焦统一跨线安装器、常用供应商预设与 Magpie 本机自动发现一键接入，不削弱任何自定义与治理能力）：

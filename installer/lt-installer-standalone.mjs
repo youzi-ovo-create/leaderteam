@@ -148,7 +148,7 @@ export function inferPackageTrackFromMeta(pkgJson, pkgDir = null, fsImpl = fs) {
   if (!pkgJson || typeof pkgJson !== 'object') return null;
   const repoUrl = typeof pkgJson.repository === 'string' ? pkgJson.repository : String(pkgJson.repository?.url || '');
   const lic = String(pkgJson.license || '').toLowerCase();
-  if (/dsh-leaderteam-releases/i.test(repoUrl) || lic.includes('see license')) {
+  if (/dsh-leaderteam-releases|youzi-ovo-create\/leaderteam(?:\.git)?$/i.test(repoUrl) || lic.includes('see license')) {
     return 'closed-free';
   }
   if (/dsh-leaderteam(?:\.git)?$/i.test(repoUrl) || lic.includes('apache-2.0')) {
@@ -796,9 +796,43 @@ export function sanitizeDesktopCordisPatch({
   return { updated: true, patchFile, removedLegacyItems: res.removedLegacyItems, toolWebEnsured: true, backupFile };
 }
 
-export function translateStandaloneInstallError(rawError) {
-  const msg = String(rawError instanceof Error ? rawError.message : rawError ?? '').trim();
+function extractFailedPathFromMessage(msg) {
+  const s = String(msg || '');
+  const mQuoted = /(?:EPERM|EACCES|EBUSY|ENOENT|ELOCKED)[^'"\n]*['"]([^'"\r\n]+)['"]/i.exec(s);
+  if (mQuoted) return mQuoted[1];
+  const mAt = /(?:store at|virtual store at|dependencies at|open|unlink|rename|mkdir|rmdir|stat)\s+['"]?([A-Za-z]:\\[^'"\r\n]+|\/[^'"\r\n\s]+)['"]?/i.exec(s);
+  if (mAt) return mAt[1];
+  return null;
+}
+
+function extractFailedOperationFromMessage(msg) {
+  const s = String(msg || '');
+  const mSys = /(?:EPERM|EACCES|EBUSY|ENOENT)[^,\n]*,\s*([a-zA-Z_]+)\s+['"]/i.exec(s);
+  if (mSys) return mSys[1];
+  if (/ERR_PNPM_UNEXPECTED_STORE/i.test(s)) return 'pnpm store 路径校验';
+  if (/ERR_PNPM_UNEXPECTED_VIRTUAL_STORE/i.test(s)) return 'pnpm virtual-store 路径校验';
+  if (/plugin\s+--profile/i.test(s) || /pnpm\.mjs/i.test(s)) return 'dsh plugin add';
+  return null;
+}
+
+export function translateStandaloneInstallError(rawError, context = {}) {
+  const msg = String(
+    rawError instanceof Error
+      ? (rawError.rawOutput || rawError.message)
+      : (rawError ?? ''),
+  ).trim();
   const lower = msg.toLowerCase();
+  const desktopRunning = Boolean(
+    context.desktopRunning === true
+    || rawError?.desktopRunning === true
+    || rawError?.code === 'DESKTOP_CLIENT_RUNNING'
+    || lower.includes('desktop_client_running')
+    || lower.includes('检测到 deepseek harness 正在运行')
+    || lower.includes('still running in this profile'),
+  );
+  const failedOperation = rawError?.failedOperation || context.failedOperation || extractFailedOperationFromMessage(msg);
+  const failedPath = rawError?.failedPath || context.failedPath || extractFailedPathFromMessage(msg);
+
   if (
     lower.includes('initialize its profile') ||
     lower.includes('open deepseek harness desktop once') ||
@@ -808,23 +842,95 @@ export function translateStandaloneInstallError(rawError) {
       code: 'DESKTOP_PROFILE_UNINITIALIZED',
       title: '官方桌面端尚未完成首次初始化',
       friendlyMessage: '新安装的 DeepSeek Harness 桌面客户端需要先打开一次以生成本地配置目录，然后才能安装插件。',
-      suggestion: '请先双击打开一次 DeepSeek Harness 桌面客户端，待主界面出现后将其完全退出（含右下角托盘图标），再点击“立即一键安装”。',
+      suggestion: '请先点击上方「帮我打开 DSH 完成初始化」启动一次客户端，待主界面出现后完全退出，再重新安装。',
+      failedOperation,
+      failedPath,
+      desktopRunning,
+      canCloseDesktop: desktopRunning,
+      canRetry: true,
+      rawDetail: msg,
+    };
+  }
+  if (desktopRunning && (
+    rawError?.code === 'DESKTOP_CLIENT_RUNNING'
+    || lower.includes('desktop_client_running')
+    || lower.includes('检测到 deepseek harness 正在运行')
+    || lower.includes('still running in this profile')
+    || lower.includes('ebusy')
+  )) {
+    return {
+      code: 'DESKTOP_CLIENT_RUNNING',
+      title: '检测到 DeepSeek Harness 桌面端正在运行',
+      friendlyMessage: '当前系统进程中仍有 DeepSeek Harness 桌面端（或托盘后台进程）在运行，会锁定插件目录。',
+      suggestion: '请点击下方「一键安全关闭 DSH 并重新安装」，或手动右键退出系统托盘图标后再试。',
+      failedOperation: failedOperation || '检测运行中客户端',
+      failedPath,
+      desktopRunning: true,
+      canCloseDesktop: true,
+      canRetry: true,
+      rawDetail: msg,
+    };
+  }
+  if (lower.includes('err_pnpm_unexpected_store') || lower.includes('err_pnpm_unexpected_virtual_store')) {
+    const isVirtual = lower.includes('err_pnpm_unexpected_virtual_store');
+    return {
+      code: 'PNPM_STORE_MISMATCH',
+      title: isVirtual ? '插件依赖目录曾迁移位置（pnpm virtual-store 路径不一致）' : 'pnpm 依赖仓库路径不一致（store-dir 冲突）',
+      friendlyMessage: isVirtual
+        ? '现有 node_modules 记录的虚拟仓库路径与当前目录不一致（常见于 .dsh 通过目录联接迁移过盘符）。'
+        : '现有 node_modules 关联的 pnpm store 路径与当前环境不一致（常见于跨盘符 .dsh 目录联接或系统 pnpm 缓存变更）。',
+      suggestion: '安装器已支持自动重建 node_modules（保留全部本地配置、凭据与历史会话）。请点击下方「重试安装」或展开诊断日志核对路径。',
+      failedOperation: failedOperation || (isVirtual ? 'pnpm virtual-store 校验' : 'pnpm store 校验'),
+      failedPath,
+      desktopRunning,
+      canCloseDesktop: desktopRunning,
+      canRetry: true,
       rawDetail: msg,
     };
   }
   if (
-    lower.includes('ebusy') ||
-    lower.includes('eperm') ||
-    lower.includes('still running') ||
-    lower.includes('deepseek harness.exe') ||
-    lower.includes('正在运行') ||
-    lower.includes('lock')
+    /\bebusy\b/i.test(msg)
+    || /\belocked\b/i.test(msg)
+    || lower.includes('resource busy')
+    || lower.includes('being used by another process')
+    || lower.includes('sharing violation')
   ) {
     return {
-      code: 'CLIENT_RUNNING_OR_LOCKED',
-      title: '检测到 DeepSeek Harness 正在运行或目录被占用',
-      friendlyMessage: '安装或更新桌面端插件前，需要先完全退出正在运行的 DeepSeek Harness 客户端（含右下角系统托盘图标）。',
-      suggestion: '请先关闭 DeepSeek Harness 窗口并右键退出托盘程序，然后点击“重新扫描”或再次点击“立即一键安装”。',
+      code: 'FILE_LOCKED_EBUSY',
+      title: '目标文件或目录正被其他程序占用（EBUSY）',
+      friendlyMessage: failedPath
+        ? `当前没有检测到 DSH 主界面运行，但路径 ${failedPath} 正被其他进程或安全软件占用。`
+        : '目标插件目录中的文件正被其他进程、终端窗口或杀毒软件扫描句柄短暂占用。',
+      suggestion: desktopRunning
+        ? '检测到仍有 DSH 进程存在，请先点击下方「一键安全关闭 DSH 并重新安装」。'
+        : '请关闭正在浏览或占用该目录的终端/编辑器（或等待杀毒软件扫描几秒），然后点击下方「重试安装」。',
+      failedOperation: failedOperation || '文件写入/替换',
+      failedPath,
+      desktopRunning,
+      canCloseDesktop: desktopRunning,
+      canRetry: true,
+      rawDetail: msg,
+    };
+  }
+  if (
+    /\beperm\b/i.test(msg)
+    || /\beacces\b/i.test(msg)
+    || lower.includes('access is denied')
+    || lower.includes('permission denied')
+    || lower.includes('拒绝访问')
+  ) {
+    return {
+      code: 'PERMISSION_DENIED',
+      title: '文件系统权限不足或访问被拒绝（EPERM / EACCES）',
+      friendlyMessage: failedPath
+        ? `执行「${failedOperation || '文件操作'}」时对路径 ${failedPath} 权限不足（非 DSH 正在运行导致）。`
+        : '对插件目录、临时目录或 pnpm 仓库目录写入时被系统拒绝访问（非 DSH 正在运行导致）。',
+      suggestion: '请确认当前账户对 .dsh 及其目录联接目标盘具备读写权限；如曾在管理员与普通用户权限间混用，请统一使用普通用户 PowerShell 重新运行安装器后重试。',
+      failedOperation: failedOperation || '目录/文件权限校验',
+      failedPath,
+      desktopRunning,
+      canCloseDesktop: desktopRunning,
+      canRetry: true,
       rawDetail: msg,
     };
   }
@@ -833,7 +939,12 @@ export function translateStandaloneInstallError(rawError) {
       code: 'SHA256_MISMATCH',
       title: '安装包 SHA-256 完整性校验未通过',
       friendlyMessage: '下载的安装包与官方校验值不一致，已自动中止安装。',
-      suggestion: '请重试下载，或选择已下载到本地的 dsh-leaderteam-*.tgz 离线安装包。',
+      suggestion: '请点击重试下载，或选择已下载到本地的 dsh-leaderteam-*.tgz 离线安装包。',
+      failedOperation: failedOperation || 'SHA-256 校验',
+      failedPath,
+      desktopRunning,
+      canCloseDesktop: false,
+      canRetry: true,
       rawDetail: msg,
     };
   }
@@ -843,6 +954,11 @@ export function translateStandaloneInstallError(rawError) {
       title: '需要确认切换产品发行线（LT ⇄ OLT）',
       friendlyMessage: msg,
       suggestion: '为防止误切换产品轨道，请勾选“确认切换发行线”后再继续；你的本地配置、凭据与历史会话将被完整保留。',
+      failedOperation: '轨道一致性校验',
+      failedPath: null,
+      desktopRunning,
+      canCloseDesktop: false,
+      canRetry: false,
       rawDetail: msg,
     };
   }
@@ -852,14 +968,38 @@ export function translateStandaloneInstallError(rawError) {
       title: '当前 DeepSeek Harness 版本暂不兼容',
       friendlyMessage: msg,
       suggestion: '请先将官方 DeepSeek Harness 客户端升级至 0.2.2-rc.1 / 0.2.2-rc.5 或更新版本后再试。',
+      failedOperation: '宿主版本兼容校验',
+      failedPath: null,
+      desktopRunning,
+      canCloseDesktop: false,
+      canRetry: false,
+      rawDetail: msg,
+    };
+  }
+  if (lower.includes('etimedout') || lower.includes('fetch failed') || lower.includes('econnreset') || lower.includes('enotfound')) {
+    return {
+      code: 'NETWORK_ERROR',
+      title: '网络下载超时或连接中断',
+      friendlyMessage: '访问 GitHub Releases 或下载资源时连接异常，原有配置未被改动。',
+      suggestion: '请检查网络后点击「重试安装」，或切换“安装方式”加载已下载到本地的 .tgz 安装包。',
+      failedOperation: failedOperation || '在线下载',
+      failedPath,
+      desktopRunning,
+      canCloseDesktop: false,
+      canRetry: true,
       rawDetail: msg,
     };
   }
   return {
     code: 'INSTALL_ERROR',
     title: '安装未完成',
-    friendlyMessage: msg || '自动安装步骤未能完成，原有配置未被破坏。',
-    suggestion: '请检查提示信息，或尝试“选择本地 .tgz 安装包”进行离线安装。',
+    friendlyMessage: msg.split(/\r?\n/)[0] || '自动安装步骤未能完成，原有配置未被破坏。',
+    suggestion: '请展开下方「完整诊断详情」核对具体报错，或点击重试 / 改用本地 .tgz 离线安装。',
+    failedOperation: failedOperation || 'dsh plugin add',
+    failedPath,
+    desktopRunning,
+    canCloseDesktop: desktopRunning,
+    canRetry: true,
     rawDetail: msg,
   };
 }
@@ -1006,6 +1146,15 @@ export function scanDshTargets({
   };
 }
 
+function safeRealpath(targetPath, fsImpl = fs) {
+  if (!targetPath) return targetPath;
+  try {
+    if (typeof fsImpl.realpathSync?.native === 'function') return fsImpl.realpathSync.native(targetPath);
+    if (typeof fsImpl.realpathSync === 'function') return fsImpl.realpathSync(targetPath);
+  } catch {}
+  return path.resolve(targetPath);
+}
+
 function isBrokenStandaloneDir(targetPath, fsImpl = fs) {
   if (!targetPath) return false;
   try {
@@ -1021,30 +1170,104 @@ function isBrokenStandaloneDir(targetPath, fsImpl = fs) {
   }
 }
 
-function withHealthyStandalonePnpmEnv(baseEnv, dshHome) {
-  const nextEnv = { ...baseEnv, DSH_HOME: dshHome };
+function isHealthyExistingDir(targetPath, fsImpl = fs) {
+  if (!targetPath) return false;
+  try {
+    return !isBrokenStandaloneDir(targetPath, fsImpl) && fsImpl.statSync(targetPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export function stripPnpmStoreVersionSuffix(storeDir) {
+  return String(storeDir || '').trim().replace(/[\\/]+v\d+[\\/]*$/i, '');
+}
+
+export function readExistingProfilePnpmStore(profileDir, fsImpl = fs) {
+  if (!profileDir) return null;
+  const realProf = safeRealpath(profileDir, fsImpl);
+  for (const dir of [realProf, profileDir]) {
+    const modYaml = path.join(dir, 'node_modules', '.modules.yaml');
+    if (!fsImpl.existsSync(modYaml)) continue;
+    try {
+      const raw = fsImpl.readFileSync(modYaml, 'utf8');
+      let rawStoreDir = null;
+      let virtualStoreDir = null;
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.storeDir === 'string') rawStoreDir = parsed.storeDir.trim();
+        if (typeof parsed?.virtualStoreDir === 'string') virtualStoreDir = parsed.virtualStoreDir.trim();
+      } catch {
+        const mStore = /^\s*storeDir\s*:\s*['"]?(.+?)['"]?\s*$/m.exec(raw);
+        if (mStore) rawStoreDir = mStore[1].trim();
+        const mVirt = /^\s*virtualStoreDir\s*:\s*['"]?(.+?)['"]?\s*$/m.exec(raw);
+        if (mVirt) virtualStoreDir = mVirt[1].trim();
+      }
+      if (!rawStoreDir) continue;
+      const storeRoot = stripPnpmStoreVersionSuffix(rawStoreDir);
+      const healthy = Boolean(
+        storeRoot
+        && (isHealthyExistingDir(storeRoot, fsImpl) || isHealthyExistingDir(rawStoreDir, fsImpl)),
+      );
+      return { rawStoreDir, storeRoot, virtualStoreDir, healthy };
+    } catch {}
+  }
+  return null;
+}
+
+export function resolveHealthyStandalonePnpmEnv(baseEnv, dshHome, { profile = 'desktop', fsImpl = fs, platform = process.platform, explicitOverrideStore = null } = {}) {
+  const nextEnv = { ...baseEnv, ...(dshHome ? { DSH_HOME: dshHome } : {}) };
+  if (explicitOverrideStore && isHealthyExistingDir(explicitOverrideStore, fsImpl)) {
+    nextEnv.NPM_CONFIG_STORE_DIR = explicitOverrideStore;
+    delete nextEnv.npm_config_store_dir;
+    return nextEnv;
+  }
+
+  // 1. Respect an existing healthy pnpm store already linked by this profile's node_modules/.modules.yaml
+  //    (critical for NTFS Junction ~/.dsh -> E:\... where pnpm stores packages at E:\.pnpm-store\v11!)
+  if (dshHome && profile) {
+    const existing = readExistingProfilePnpmStore(path.join(dshHome, 'profiles', profile), fsImpl);
+    if (existing?.healthy && existing.storeRoot) {
+      nextEnv.NPM_CONFIG_STORE_DIR = existing.storeRoot;
+      delete nextEnv.npm_config_store_dir;
+      return nextEnv;
+    }
+  }
+
   const explicitStore = nextEnv.NPM_CONFIG_STORE_DIR || nextEnv.npm_config_store_dir || '';
-  if (explicitStore && !isBrokenStandaloneDir(explicitStore)) return nextEnv;
+  if (explicitStore && !isBrokenStandaloneDir(explicitStore, fsImpl)) return nextEnv;
   const candidates = [];
   if (explicitStore) candidates.push(explicitStore);
   if (nextEnv.PNPM_HOME) candidates.push(path.join(nextEnv.PNPM_HOME, 'store'));
-  if (process.platform === 'win32' && nextEnv.LOCALAPPDATA) {
+  if (platform === 'win32' && nextEnv.LOCALAPPDATA) {
     candidates.push(path.join(nextEnv.LOCALAPPDATA, 'pnpm', 'store'));
   }
-  if (candidates.some(p => isBrokenStandaloneDir(p) || isBrokenStandaloneDir(path.dirname(p)))) {
-    const safePnpmHome = path.join(dshHome || os.tmpdir(), 'leaderteam', 'pnpm-home');
+  if (candidates.some(p => isBrokenStandaloneDir(p, fsImpl) || isBrokenStandaloneDir(path.dirname(p), fsImpl))) {
+    // Use resolved real path of dshHome so the fallback store stays on the same physical volume as node_modules
+    const realHome = dshHome ? safeRealpath(dshHome, fsImpl) : os.tmpdir();
+    const safePnpmHome = path.join(realHome, 'leaderteam', 'pnpm-home');
     const safeStore = path.join(safePnpmHome, 'store');
-    try { fs.mkdirSync(safeStore, { recursive: true }); } catch {}
+    try { fsImpl.mkdirSync(safeStore, { recursive: true }); } catch {}
     nextEnv.PNPM_HOME = safePnpmHome;
     nextEnv.NPM_CONFIG_STORE_DIR = safeStore;
+    delete nextEnv.npm_config_store_dir;
   }
   return nextEnv;
 }
 
-function invokeStandalonePluginAdd(target, tgzToInstall, dshHome) {
-  const execEnv = withHealthyStandalonePnpmEnv(process.env, dshHome);
+function combineStandaloneProcOutput(proc) {
+  const parts = [];
+  const out = String(proc?.stdout || '').trim();
+  const err = String(proc?.stderr || '').trim();
+  if (out) parts.push(out);
+  if (err && err !== out) parts.push(err);
+  if (proc?.error) parts.push(String(proc.error.message || proc.error));
+  return parts.join('\n').trim();
+}
+
+function runRawStandalonePluginAdd(target, tgzToInstall, execEnv, spawnSyncImpl = spawnSync) {
   if (target.kind === 'official-desktop' && target.clientExecutable && target.desktopHostCliJs) {
-    return spawnSync(
+    return spawnSyncImpl(
       target.clientExecutable,
       ['--expose-internals', target.desktopHostCliJs, 'plugin', '--profile', target.profile, 'add', tgzToInstall],
       {
@@ -1064,7 +1287,7 @@ function invokeStandalonePluginAdd(target, tgzToInstall, dshHome) {
   const isCmd = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(String(cmd));
   if (isCmd) {
     const quotedLine = [cmd, ...args].map(a => `"${String(a).replace(/"/g, '""')}"`).join(' ');
-    return spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${quotedLine}"`], {
+    return spawnSyncImpl(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${quotedLine}"`], {
       encoding: 'utf8',
       windowsHide: true,
       windowsVerbatimArguments: true,
@@ -1073,13 +1296,76 @@ function invokeStandalonePluginAdd(target, tgzToInstall, dshHome) {
       env: execEnv,
     });
   }
-  return spawnSync(cmd, args, {
+  return spawnSyncImpl(cmd, args, {
     encoding: 'utf8',
     windowsHide: true,
     shell: false,
     timeout: 180000,
     env: execEnv,
   });
+}
+
+export function invokeStandalonePluginAdd(target, tgzToInstall, dshHome, { spawnSyncImpl = spawnSync, fsImpl = fs, env = process.env, platform = process.platform } = {}) {
+  const execEnv = resolveHealthyStandalonePnpmEnv(env, dshHome, { profile: target.profile, fsImpl, platform });
+  let proc = runRawStandalonePluginAdd(target, tgzToInstall, execEnv, spawnSyncImpl);
+  if (proc.status === 0) return { ...proc, combinedOutput: combineStandaloneProcOutput(proc), recovered: null };
+
+  let combined = combineStandaloneProcOutput(proc);
+
+  // Recovery Step 1: If pnpm reports ERR_PNPM_UNEXPECTED_STORE with an existing healthy store, retry with that store
+  const storeMatch = /ERR_PNPM_UNEXPECTED_STORE[\s\S]*?currently linked from the store at\s+["']([^"']+)["']/i.exec(combined);
+  if (storeMatch) {
+    const expectedRoot = stripPnpmStoreVersionSuffix(storeMatch[1]);
+    if (expectedRoot && isHealthyExistingDir(expectedRoot, fsImpl) && expectedRoot !== execEnv.NPM_CONFIG_STORE_DIR) {
+      const retryEnv = resolveHealthyStandalonePnpmEnv(env, dshHome, {
+        profile: target.profile,
+        fsImpl,
+        platform,
+        explicitOverrideStore: expectedRoot,
+      });
+      proc = runRawStandalonePluginAdd(target, tgzToInstall, retryEnv, spawnSyncImpl);
+      combined = combineStandaloneProcOutput(proc);
+      if (proc.status === 0) return { ...proc, combinedOutput: combined, recovered: 'matched-existing-store' };
+    }
+  }
+
+  // Recovery Step 2: If pnpm still fails with ERR_PNPM_UNEXPECTED_STORE or ERR_PNPM_UNEXPECTED_VIRTUAL_STORE
+  // (e.g. .dsh relocated via NTFS Junction or old store deleted), atomically relocate ONLY node_modules and retry.
+  // Never touches cordis.yml, cordis.patch.yml, package.json, leaderteam/, .env, .credentials.yaml, or sessions/.
+  if (/ERR_PNPM_UNEXPECTED_STORE|ERR_PNPM_UNEXPECTED_VIRTUAL_STORE/i.test(combined) && dshHome && target.profile) {
+    const realProf = safeRealpath(path.join(dshHome, 'profiles', target.profile), fsImpl);
+    const nmDir = path.join(realProf, 'node_modules');
+    if (fsImpl.existsSync(nmDir)) {
+      const bakDir = path.join(realProf, `node_modules.lt-bak-${Date.now()}`);
+      let moved = false;
+      try {
+        fsImpl.renameSync(nmDir, bakDir);
+        moved = true;
+        // Re-resolve healthy store after moving stale node_modules away
+        const freshEnv = resolveHealthyStandalonePnpmEnv(env, dshHome, { profile: target.profile, fsImpl, platform });
+        const retryProc = runRawStandalonePluginAdd(target, tgzToInstall, freshEnv, spawnSyncImpl);
+        const retryCombined = combineStandaloneProcOutput(retryProc);
+        if (retryProc.status === 0) {
+          try { fsImpl.rmSync(bakDir, { recursive: true, force: true }); } catch {}
+          return { ...retryProc, combinedOutput: retryCombined, recovered: 'rebuilt-node-modules' };
+        }
+        // Retry failed: restore original node_modules atomically so nothing is lost
+        try {
+          if (fsImpl.existsSync(nmDir)) fsImpl.rmSync(nmDir, { recursive: true, force: true });
+          fsImpl.renameSync(bakDir, nmDir);
+          moved = false;
+        } catch {}
+        return { ...retryProc, combinedOutput: retryCombined || combined, recovered: null };
+      } catch (mvErr) {
+        if (moved && fsImpl.existsSync(bakDir) && !fsImpl.existsSync(nmDir)) {
+          try { fsImpl.renameSync(bakDir, nmDir); } catch {}
+        }
+        combined = `${combined}\n[node_modules recovery error: ${mvErr instanceof Error ? mvErr.message : String(mvErr)}]`;
+      }
+    }
+  }
+
+  return { ...proc, combinedOutput: combined, recovered: null };
 }
 
 export async function closeRunningDesktopClient({
@@ -1138,7 +1424,11 @@ export async function downloadAndInstallStandalone({
     throw new Error(`当前 DSH 版本 (${target.dshVersion || '未知'}) 低于最低要求 0.2.2-alpha.2，请先更新 DSH 客户端。`);
   }
   if (target.kind === 'official-desktop' && target.desktopRunning) {
-    throw new Error('EBUSY: 检测到 DeepSeek Harness 正在运行，请先点击“一键安全关闭 DSH”或手动退出客户端后再开始安装。');
+    const err = new Error('DESKTOP_CLIENT_RUNNING: 检测到 DeepSeek Harness 正在运行，请先点击“一键安全关闭 DSH”或手动退出客户端后再开始安装。');
+    err.code = 'DESKTOP_CLIENT_RUNNING';
+    err.desktopRunning = true;
+    err.failedOperation = '检测运行中客户端';
+    throw err;
   }
 
   let tgzToInstall = localTgzPath ? path.resolve(localTgzPath) : null;
@@ -1223,9 +1513,16 @@ export async function downloadAndInstallStandalone({
   if (typeof runner === 'function') {
     await runner({ target, tgzToInstall, dshHome: snap.dshHome, mode, track: resolvedTrack, releaseTag: resolvedTag });
   } else {
-    const proc = invokeStandalonePluginAdd(target, tgzToInstall, snap.dshHome);
+    const proc = invokeStandalonePluginAdd(target, tgzToInstall, snap.dshHome, { spawnSyncImpl });
     if (proc.status !== 0) {
-      throw new Error((proc.stderr || proc.stdout || `安装退出码 ${proc.status}`).trim());
+      const combined = proc.combinedOutput || combineStandaloneProcOutput(proc) || `安装退出码 ${proc.status}`;
+      const err = new Error(combined);
+      err.rawOutput = combined;
+      err.exitCode = proc.status;
+      err.failedOperation = extractFailedOperationFromMessage(combined) || 'dsh plugin add';
+      err.failedPath = extractFailedPathFromMessage(combined);
+      err.desktopRunning = isOfficialDesktopProcessRunning(snap.platform, spawnSyncImpl);
+      throw err;
     }
   }
 
@@ -1442,7 +1739,7 @@ export function renderStandaloneHtml(token) {
 
   <div class="field" id="localPathRow" style="display:none">
     <label for="localTgzPathInput">填写本地 <code>.tgz</code> 安装包完整路径</label>
-    <input id="localTgzPathInput" type="text" placeholder="例如 D:\\Downloads\\dsh-leaderteam-2.6.1.tgz" />
+    <input id="localTgzPathInput" type="text" placeholder="例如 D:\\Downloads\\dsh-leaderteam-2.6.2.tgz" />
   </div>
 
   <div id="trackSwitchBox" class="alert warn" style="display:none">
@@ -1705,7 +2002,24 @@ export function renderStandaloneHtml(token) {
       const latest = await doScan();
       const chosen = latest.targets && (latest.targets.find(t => t.id === tid) || latest.targets[0]);
       if (chosen && chosen.kind === 'official-desktop' && chosen.desktopRunning) {
-        m.innerHTML = '<div class="alert warn"><strong>检测到 DeepSeek Harness 正在运行</strong><br>请先点击上方黄条里的「一键安全关闭 DSH」按钮，关闭后再点击本按钮即可安装。</div>';
+        m.innerHTML =
+          '<div class="alert warn"><strong>检测到 DeepSeek Harness 正在运行</strong>' +
+          '<div style="margin-top:4px">安装或升级桌面端插件前需要先关闭运行中的 DSH 客户端（含托盘图标）。</div>' +
+          '<div class="row" style="margin-top:8px"><button type="button" class="warn-btn" id="btnInlineCloseAndRetry">一键安全关闭 DSH 并继续安装</button></div></div>';
+        const inlineBtn = document.getElementById('btnInlineCloseAndRetry');
+        if (inlineBtn) {
+          inlineBtn.onclick = async () => {
+            inlineBtn.disabled = true;
+            inlineBtn.textContent = '正在关闭 DSH…';
+            try {
+              await fetch('/close-desktop?token=' + encodeURIComponent(tok), { method: 'POST' });
+              await doScan();
+              btn.click();
+            } finally {
+              inlineBtn.disabled = false;
+            }
+          };
+        }
         return;
       }
 
@@ -1748,8 +2062,43 @@ export function renderStandaloneHtml(token) {
       });
       const j = await r.json();
       if (!r.ok || !j.ok) {
-        const f = j.friendly || { title: '安装未完成', friendlyMessage: j.error || '未知错误', suggestion: '请检查提示后重试。' };
-        m.innerHTML = '<div class="alert err"><strong>' + esc(f.title) + '</strong><br>' + esc(f.friendlyMessage) + '<br><b>处理建议：</b>' + esc(f.suggestion) + '</div>';
+        const f = j.friendly || { title: '安装未完成', friendlyMessage: j.error || '未知错误', suggestion: '请检查提示后重试。', rawDetail: j.error || '' };
+        const metaLines = [];
+        if (f.failedOperation) metaLines.push('<b>失败操作：</b><code>' + esc(f.failedOperation) + '</code>');
+        if (f.failedPath) metaLines.push('<b>涉及路径：</b><code>' + esc(f.failedPath) + '</code>');
+        const actionBtns = [];
+        if (f.canCloseDesktop || f.code === 'DESKTOP_CLIENT_RUNNING') {
+          actionBtns.push('<button type="button" class="warn-btn" id="btnErrCloseAndRetry">一键安全关闭 DSH 并重试安装</button>');
+        }
+        if (f.canRetry !== false) {
+          actionBtns.push('<button type="button" class="secondary" id="btnErrRetry">重试安装</button>');
+        }
+        const rawBlock = f.rawDetail
+          ? '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">查看完整诊断详情</summary><pre style="white-space:pre-wrap;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px;max-height:220px;overflow:auto;font-size:12px">' + esc(f.rawDetail) + '</pre></details>'
+          : '';
+        m.innerHTML =
+          '<div class="alert err"><strong>' + esc(f.title) + '</strong>' +
+          '<div style="margin-top:4px">' + esc(f.friendlyMessage) + '</div>' +
+          (metaLines.length ? '<div style="margin-top:6px;font-size:12.5px">' + metaLines.join('<br>') + '</div>' : '') +
+          '<div style="margin-top:6px"><b>处理建议：</b>' + esc(f.suggestion) + '</div>' +
+          (actionBtns.length ? '<div class="row" style="margin-top:10px">' + actionBtns.join('') + '</div>' : '') +
+          rawBlock + '</div>';
+        const cBtn = document.getElementById('btnErrCloseAndRetry');
+        if (cBtn) {
+          cBtn.onclick = async () => {
+            cBtn.disabled = true;
+            cBtn.textContent = '正在关闭 DSH…';
+            try {
+              await fetch('/close-desktop?token=' + encodeURIComponent(tok), { method: 'POST' });
+              await doScan();
+              btn.click();
+            } finally {
+              cBtn.disabled = false;
+            }
+          };
+        }
+        const rBtn = document.getElementById('btnErrRetry');
+        if (rBtn) rBtn.onclick = () => btn.click();
         return;
       }
       const verb = j.mode === 'repair' ? '修复安装成功' : '安装成功';
@@ -1893,7 +2242,9 @@ export async function startStandaloneInstallerServer({
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
       } catch (e) {
-        const friendly = translateStandaloneInstallError(e);
+        const friendly = translateStandaloneInstallError(e, {
+          desktopRunning: e?.desktopRunning ?? isOfficialDesktopProcessRunning(process.platform),
+        });
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: friendly.friendlyMessage, friendly }));
       }
