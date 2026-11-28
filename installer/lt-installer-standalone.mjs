@@ -2174,7 +2174,7 @@ export function renderStandaloneHtml(token) {
     </div>
     <label class="row" style="margin-top:6px;cursor:pointer;font-size:12.5px;color:var(--muted)">
       <input type="checkbox" id="chkIncludePrerelease" />
-      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.2）</span>
+      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.3）</span>
     </label>
     <div class="muted" id="versionMeta" style="margin-top:4px"></div>
   </div>
