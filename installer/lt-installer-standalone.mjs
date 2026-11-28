@@ -120,6 +120,59 @@ export function listPlatformReleases(releases, targetPlatform = process.platform
   return items.map((it, idx) => ({ ...it, isLatest: latestStableIdx >= 0 ? idx === latestStableIdx : idx === 0 }));
 }
 
+async function fetchTrackReleasesViaAtomFallback(tMeta, fetchImpl) {
+  const atomUrl = `${tMeta.releasesUrl}.atom`;
+  const atomRes = await fetchImpl(atomUrl, {
+    headers: { Accept: 'application/atom+xml, application/xml, text/xml, */*', 'User-Agent': 'LT-Unified-Downloader' },
+  });
+  if (!atomRes.ok) throw new Error(`Atom Feed 备用通道失败 (HTTP ${atomRes.status})`);
+  const xml = await atomRes.text();
+  const entries = [];
+  for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const b = m[1];
+    const href = (b.match(/<link[^>]+href="([^"]+)"/) || [])[1] || '';
+    const tag = href.includes('/releases/tag/')
+      ? decodeURIComponent(href.split('/releases/tag/')[1].split(/[?#\/]/)[0])
+      : ((b.match(/<id>([^<]+)<\/id>/) || [])[1] || '').split('/').pop();
+    const title = ((b.match(/<title>([^<]+)<\/title>/) || [])[1] || tag || '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+    const updated = (b.match(/<updated>([^<]+)<\/updated>/) || [])[1] || null;
+    if (tag) entries.push({ tag: tag.trim(), title: title.trim(), updated });
+  }
+  const top = entries.slice(0, 12);
+  const rawList = await Promise.all(top.map(async (e) => {
+    const parsedTag = parsePlatformReleaseTag(e.tag);
+    if (!parsedTag) return null;
+    const isPre = Boolean(parseSemver(parsedTag.version)?.pre?.length) || /pre-?release/i.test(e.title);
+    const assets = [];
+    try {
+      const expRes = await fetchImpl(`${tMeta.releasesUrl}/expanded_assets/${encodeURIComponent(e.tag)}`, {
+        headers: { Accept: 'text/html, */*', 'User-Agent': 'LT-Unified-Downloader' },
+      });
+      if (expRes.ok) {
+        const html = await expRes.text();
+        const seen = new Set();
+        const re = new RegExp(`href="(/[^"]*/releases/download/${e.tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/([^"?#]+))"`, 'g');
+        for (const am of html.matchAll(re)) {
+          const name = decodeURIComponent(am[2]);
+          if (seen.has(name)) continue;
+          seen.add(name);
+          assets.push({ name, size: null, browser_download_url: `https://github.com${am[1]}` });
+        }
+      }
+    } catch {}
+    if (!assets.some(a => a.name.endsWith('.tgz'))) {
+      const tgzName = `dsh-leaderteam-${parsedTag.version}.tgz`;
+      assets.push({ name: tgzName, size: null, browser_download_url: `${tMeta.releasesUrl}/download/${e.tag}/${tgzName}` });
+      if (!assets.some(a => /^SHA256SUMS/i.test(a.name))) {
+        assets.push({ name: 'SHA256SUMS.txt', size: null, browser_download_url: `${tMeta.releasesUrl}/download/${e.tag}/SHA256SUMS.txt` });
+      }
+    }
+    return { tag_name: e.tag, name: e.title, draft: false, prerelease: isPre, published_at: e.updated, assets };
+  }));
+  return rawList.filter(Boolean);
+}
+
 export async function fetchTrackReleases({
   track = 'closed-free',
   platform = process.platform,
@@ -127,11 +180,22 @@ export async function fetchTrackReleases({
   fetchImpl = globalThis.fetch,
 } = {}) {
   const tMeta = TRACKS[track] || TRACKS['closed-free'];
-  const res = await fetchImpl(tMeta.apiUrl, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LT-Unified-Downloader' },
-  });
-  if (!res.ok) throw new Error(`获取 ${tMeta.shortLabel} 版本列表失败 (HTTP ${res.status})`);
-  const raw = await res.json();
+  let raw = null;
+  let apiErr = null;
+  try {
+    const res = await fetchImpl(tMeta.apiUrl, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LT-Unified-Downloader' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    raw = await res.json();
+  } catch (err) {
+    apiErr = err;
+    try {
+      raw = await fetchTrackReleasesViaAtomFallback(tMeta, fetchImpl);
+    } catch (fbErr) {
+      throw new Error(`获取 ${tMeta.shortLabel} 版本列表失败 (${apiErr?.message || apiErr}; 备用通道: ${fbErr?.message || fbErr})`);
+    }
+  }
   const releases = listPlatformReleases(raw, platform, { includePrerelease }).map(({ rel, ...rest }) => rest);
   return {
     track: tMeta.id,
@@ -2174,7 +2238,7 @@ export function renderStandaloneHtml(token) {
     </div>
     <label class="row" style="margin-top:6px;cursor:pointer;font-size:12.5px;color:var(--muted)">
       <input type="checkbox" id="chkIncludePrerelease" />
-      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.3）</span>
+      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.4）</span>
     </label>
     <div class="muted" id="versionMeta" style="margin-top:4px"></div>
   </div>
