@@ -1750,29 +1750,34 @@ export async function downloadAndInstallStandalone({
       }
     }
 
-    fs.mkdirSync(effectiveCacheDir, { recursive: true });
-    const cachedPath = path.join(effectiveCacheDir, tgzAsset.name);
+    const repoSlug = String(tMeta.repo || 'unknown').replace(/[^A-Za-z0-9._-]+/g, '_');
+    const tagSlug = String(resolvedTag || 'unknown').replace(/[^A-Za-z0-9._-]+/g, '_');
+    const isolatedCacheDir = path.join(effectiveCacheDir, repoSlug, resolvedTrack, snap.platform, tagSlug);
+    fs.mkdirSync(isolatedCacheDir, { recursive: true });
+    const cachedPath = path.join(isolatedCacheDir, tgzAsset.name);
     let buf = null;
 
-    // Verified cache reuse (D02): if cached .tgz matches expectedSha, skip network download completely!
+    // Verified cache reuse (D02/Section 3): isolated by repo/track/platform/tag/assetName + strict SHA-256 + inner version match!
     if (expectedSha && fs.existsSync(cachedPath)) {
       try {
         const cachedBuf = fs.readFileSync(cachedPath);
         const cachedSha = crypto.createHash('sha256').update(cachedBuf).digest('hex');
-        if (cachedSha === expectedSha) {
+        const cachedMeta = inspectStandaloneTgz(cachedBuf);
+        const versionOk = !picked.version || !cachedMeta.version || cachedMeta.version === picked.version;
+        if (cachedSha === expectedSha && versionOk) {
           buf = cachedBuf;
           sha256 = cachedSha;
           sha256Verified = true;
           cacheHit = true;
           emit({
             stage: 'verifying',
-            stageLabel: `命中本地已校验缓存（${tgzAsset.name}），免重复下载`,
+            stageLabel: `命中隔离缓存（${resolvedTag} · ${tgzAsset.name}），免重复下载`,
             percent: 55,
             downloadedBytes: buf.byteLength,
             totalBytes: buf.byteLength,
             cacheHit: true,
-            cacheDir: effectiveCacheDir,
-            logLine: `[cache] SHA-256 verified hit: ${cachedPath}`,
+            cacheDir: isolatedCacheDir,
+            logLine: `[cache] SHA-256 + version verified hit: ${cachedPath}`,
           });
         }
       } catch {}
@@ -1815,6 +1820,9 @@ export async function downloadAndInstallStandalone({
     }
 
     const pkgMeta = inspectStandaloneTgz(buf);
+    if (picked.version && pkgMeta.version && pkgMeta.version !== picked.version) {
+      throw new Error(`VERSION_MISMATCH: 所选发行版 ${resolvedTag}（预期 v${picked.version}）与下载制品内部版本 v${pkgMeta.version} 不一致，已中止安装（禁止静默回退）。`);
+    }
     if (target && pkgMeta.enginesDsh && target.dshVersion && !satisfiesStandaloneRange(target.dshVersion, pkgMeta.enginesDsh)) {
       throw new Error(`HOST_INCOMPATIBLE: 当前 DSH 版本 (${target.dshVersion}) 不满足安装包要求 (${pkgMeta.enginesDsh})。`);
     }
@@ -2166,7 +2174,7 @@ export function renderStandaloneHtml(token) {
     </div>
     <label class="row" style="margin-top:6px;cursor:pointer;font-size:12.5px;color:var(--muted)">
       <input type="checkbox" id="chkIncludePrerelease" />
-      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.1）</span>
+      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.2）</span>
     </label>
     <div class="muted" id="versionMeta" style="margin-top:4px"></div>
   </div>
@@ -2251,6 +2259,7 @@ export function renderStandaloneHtml(token) {
   let state = null;
   let tid = null;
   let selectedTrack = 'closed-free';
+  let selectedReleaseTag = '';
   let trackInitializedFromInstalled = false;
   const releasesCache = {};
   const STAGE_ORDER = ['checking', 'downloading', 'verifying', 'installing', 'configuring', 'ready'];
@@ -2401,19 +2410,25 @@ export function renderStandaloneHtml(token) {
       meta.textContent = '';
       return;
     }
+    const prevChoice = selectedReleaseTag || sel.value || '';
     sel.innerHTML = list.map(x => {
       const sizeMb = x.assetSize ? (' · ' + (x.assetSize / 1048576).toFixed(2) + ' MB') : '';
       const prefix = x.prerelease ? '[RC 预览版] ' : (x.isLatest ? '★ 最新稳定版 · ' : '');
       return '<option value="' + esc(x.tag) + '">' + esc(prefix + x.tag + ' (v' + x.version + sizeMb + ')') + '</option>';
     }).join('');
-    const defaultItem = list.find(x => x.isLatest) || list[0];
-    if (defaultItem) sel.value = defaultItem.tag;
+    const preserved = prevChoice ? list.find(x => x.tag === prevChoice) : null;
+    const defaultItem = preserved || list.find(x => x.isLatest) || list[0];
+    if (defaultItem) {
+      sel.value = defaultItem.tag;
+      selectedReleaseTag = defaultItem.tag;
+    }
     const renderMeta = (hit) => {
       if (!hit) { meta.textContent = ''; return; }
       meta.textContent = (hit.prerelease ? '已选 RC 候选版 ' : '已选稳定版 ') + hit.tag + ' · 安装包：' + hit.assetName + '（已适配当前操作系统）';
     };
     renderMeta(defaultItem);
     sel.onchange = () => {
+      selectedReleaseTag = sel.value || '';
       const hit = list.find(x => x.tag === sel.value) || defaultItem;
       renderMeta(hit);
     };
@@ -2581,8 +2596,17 @@ export function renderStandaloneHtml(token) {
     btn.disabled = true;
     try {
       const mode = document.getElementById('modeSelect').value;
+      const lockedReleaseTag = (mode === 'online' || mode === 'repair' || mode === 'download-only')
+        ? (document.getElementById('versionSelect').value || selectedReleaseTag || null)
+        : null;
+      const lockedIncludePre = Boolean(document.getElementById('chkIncludePrerelease')?.checked);
       if (mode !== 'download-only') {
         const latest = await doScan();
+        if (lockedReleaseTag) {
+          selectedReleaseTag = lockedReleaseTag;
+          const vs = document.getElementById('versionSelect');
+          if (vs && [...vs.options].some(o => o.value === lockedReleaseTag)) vs.value = lockedReleaseTag;
+        }
         const chosen = latest.targets && (latest.targets.find(t => t.id === tid) || latest.targets[0]);
         if (chosen && chosen.kind === 'official-desktop' && chosen.desktopRunning) {
           m.innerHTML =
@@ -2614,8 +2638,8 @@ export function renderStandaloneHtml(token) {
         cacheDir: cacheDir || null,
         track: selectedTrack,
         mode: mode === 'repair' ? 'repair' : (mode === 'download-only' ? 'download-only' : 'install'),
-        releaseTag: (mode === 'online' || mode === 'repair' || mode === 'download-only') ? (document.getElementById('versionSelect').value || null) : null,
-        includePrerelease: Boolean(document.getElementById('chkIncludePrerelease')?.checked),
+        releaseTag: lockedReleaseTag,
+        includePrerelease: lockedIncludePre,
         confirmTrackSwitch: Boolean(document.getElementById('chkConfirmSwitch').checked),
         apiKeyEnvVar: document.getElementById('envVar').value,
         apiKey: document.getElementById('apiKey').value.trim(),
