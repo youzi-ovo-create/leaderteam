@@ -11,9 +11,7 @@ fi
 
 INSTALLER_JS=""
 if [[ -n "${SCRIPT_DIR}" ]]; then
-  if [[ -f "${SCRIPT_DIR}/bin/lt-installer.mjs" && -f "${SCRIPT_DIR}/leaderteam/core/installer.mjs" ]]; then
-    INSTALLER_JS="${SCRIPT_DIR}/bin/lt-installer.mjs"
-  elif [[ -f "${SCRIPT_DIR}/installer/lt-installer-standalone.mjs" ]]; then
+  if [[ -f "${SCRIPT_DIR}/installer/lt-installer-standalone.mjs" ]]; then
     INSTALLER_JS="${SCRIPT_DIR}/installer/lt-installer-standalone.mjs"
   elif [[ -f "${SCRIPT_DIR}/lt-installer-standalone.mjs" ]]; then
     INSTALLER_JS="${SCRIPT_DIR}/lt-installer-standalone.mjs"

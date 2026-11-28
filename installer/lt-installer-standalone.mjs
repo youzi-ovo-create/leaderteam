@@ -33,9 +33,9 @@ export const TRACKS = Object.freeze({
     brand: 'LT',
     label: 'Leader Team (LT · 闭源免费公开发行版)',
     shortLabel: 'LT 闭源免费版',
-    repo: 'youzi-ovo-create/dsh-leaderteam-releases',
-    apiUrl: 'https://api.github.com/repos/youzi-ovo-create/dsh-leaderteam-releases/releases?per_page=30',
-    releasesUrl: 'https://github.com/youzi-ovo-create/dsh-leaderteam-releases/releases',
+    repo: 'youzi-ovo-create/leaderteam',
+    apiUrl: 'https://api.github.com/repos/youzi-ovo-create/leaderteam/releases?per_page=30',
+    releasesUrl: 'https://github.com/youzi-ovo-create/leaderteam/releases',
   },
   'open-source': {
     id: 'open-source',
@@ -50,7 +50,7 @@ export const TRACKS = Object.freeze({
 
 export function parsePlatformReleaseTag(rawTag) {
   const trimmed = String(rawTag ?? '').trim();
-  const m = /^(?:(windows|win32|linux|darwin|macos)-)?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/i.exec(trimmed);
+  const m = /^(?:(?:olt|lt)-)?(?:(windows|win32|linux|darwin|macos)-)?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/i.exec(trimmed);
   if (!m) return null;
   const rawPlat = m[1] ? m[1].toLowerCase() : null;
   let releasePlatform = 'universal';
@@ -100,6 +100,7 @@ export function listPlatformReleases(releases, targetPlatform = process.platform
       tag: String(r.tag_name || '').trim(),
       name: String(r.name || r.tag_name || '').trim(),
       version: parsedTag.version,
+      prerelease: Boolean(r.prerelease),
       releasePlatform: parsedTag.releasePlatform,
       publishedAt: r.published_at || r.created_at || null,
       assetName: tgzAsset.name,
@@ -115,12 +116,14 @@ export function listPlatformReleases(releases, targetPlatform = process.platform
     const bExact = b.releasePlatform === targetPlatform ? 1 : 0;
     return bExact - aExact;
   });
-  return items.map((it, idx) => ({ ...it, isLatest: idx === 0 }));
+  const latestStableIdx = items.findIndex(it => !it.prerelease);
+  return items.map((it, idx) => ({ ...it, isLatest: latestStableIdx >= 0 ? idx === latestStableIdx : idx === 0 }));
 }
 
 export async function fetchTrackReleases({
   track = 'closed-free',
   platform = process.platform,
+  includePrerelease = false,
   fetchImpl = globalThis.fetch,
 } = {}) {
   const tMeta = TRACKS[track] || TRACKS['closed-free'];
@@ -129,7 +132,7 @@ export async function fetchTrackReleases({
   });
   if (!res.ok) throw new Error(`获取 ${tMeta.shortLabel} 版本列表失败 (HTTP ${res.status})`);
   const raw = await res.json();
-  const releases = listPlatformReleases(raw, platform).map(({ rel, ...rest }) => rest);
+  const releases = listPlatformReleases(raw, platform, { includePrerelease }).map(({ rel, ...rest }) => rest);
   return {
     track: tMeta.id,
     brand: tMeta.brand,
@@ -1139,6 +1142,7 @@ export function scanDshTargets({
     platform,
     arch: process.arch,
     dshHome: home,
+    defaultCacheDir: resolveDefaultDownloadCacheDir(home),
     targets,
     bundledTarballs,
     tracks: Object.values(TRACKS),
@@ -1400,77 +1404,327 @@ export async function closeRunningDesktopClient({
   return { ok: true, closed: true, alreadyStopped: false, message: '已发送退出信号给 DeepSeek Harness。' };
 }
 
+export function resolveDefaultDownloadCacheDir(dshHome) {
+  const base = dshHome ? path.resolve(dshHome) : path.join(os.homedir(), '.dsh');
+  return path.join(base, 'leaderteam', 'installer-cache');
+}
+
+function persistApiKeyToCredentialsYaml(dshHome, envVarName, apiKeyValue) {
+  try {
+    const credFile = path.join(dshHome, '.credentials.yaml');
+    const prev = fs.existsSync(credFile) ? fs.readFileSync(credFile, 'utf8') : '';
+    const lines = prev ? prev.split(/\r?\n/) : [];
+    const keyRe = new RegExp(`^\\s*${envVarName}\\s*:`);
+    const kept = lines.filter(l => l.trim() && !keyRe.test(l));
+    kept.push(`${envVarName}: ${JSON.stringify(String(apiKeyValue).trim())}`);
+    const tmp = `${credFile}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmp, `${kept.join('\n')}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, credFile);
+  } catch {}
+}
+
+function runRawStandalonePluginAddAsync(target, tgzToInstall, execEnv, onLog = null) {
+  let cmd;
+  let args;
+  let spawnOpts;
+  if (target.kind === 'official-desktop' && target.clientExecutable && target.desktopHostCliJs) {
+    cmd = target.clientExecutable;
+    args = ['--expose-internals', target.desktopHostCliJs, 'plugin', '--profile', target.profile, 'add', tgzToInstall];
+    spawnOpts = {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+      env: { ...execEnv, ELECTRON_RUN_AS_NODE: '1' },
+    };
+  } else {
+    const rawCmd = target.cliUsesNode ? process.execPath : target.cliCommand;
+    const rawArgs = target.cliUsesNode
+      ? [target.cliCommand, 'plugin', '--profile', target.profile, 'add', tgzToInstall]
+      : ['plugin', '--profile', target.profile, 'add', tgzToInstall];
+    const isCmd = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(String(rawCmd));
+    if (isCmd) {
+      const quotedLine = [rawCmd, ...rawArgs].map(a => `"${String(a).replace(/"/g, '""')}"`).join(' ');
+      cmd = process.env.ComSpec || 'cmd.exe';
+      args = ['/d', '/s', '/c', `"${quotedLine}"`];
+      spawnOpts = {
+        windowsHide: true,
+        windowsVerbatimArguments: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+        env: execEnv,
+      };
+    } else {
+      cmd = rawCmd;
+      args = rawArgs;
+      spawnOpts = {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+        env: execEnv,
+      };
+    }
+  }
+
+  return new Promise(resolve => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let child;
+    try {
+      child = spawn(cmd, args, spawnOpts);
+    } catch (err) {
+      resolve({ status: 1, stdout: '', stderr: '', error: err });
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch {}
+      resolve({ status: 1, stdout, stderr: `${stderr}\nETIMEDOUT: 安装命令超时 (180s)`.trim(), error: new Error('ETIMEDOUT') });
+    }, 180_000);
+    timer.unref?.();
+
+    const feed = (buf, isErr) => {
+      const txt = buf.toString('utf8');
+      if (isErr) stderr += txt;
+      else stdout += txt;
+      if (typeof onLog === 'function') {
+        for (const line of txt.split(/\r?\n/)) {
+          const t = line.trim();
+          if (t) onLog(t);
+        }
+      }
+    };
+    child.stdout?.on('data', d => feed(d, false));
+    child.stderr?.on('data', d => feed(d, true));
+    child.on('error', err => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ status: 1, stdout, stderr, error: err });
+    });
+    child.on('close', code => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ status: typeof code === 'number' ? code : 1, stdout, stderr, error: null });
+    });
+  });
+}
+
+export async function invokeStandalonePluginAddAsync(
+  target,
+  tgzToInstall,
+  dshHome,
+  { fsImpl = fs, env = process.env, platform = process.platform, onLog = null } = {},
+) {
+  const execEnv = resolveHealthyStandalonePnpmEnv(env, dshHome, { profile: target.profile, fsImpl, platform });
+  let proc = await runRawStandalonePluginAddAsync(target, tgzToInstall, execEnv, onLog);
+  if (proc.status === 0) return { ...proc, combinedOutput: combineStandaloneProcOutput(proc), recovered: null };
+
+  let combined = combineStandaloneProcOutput(proc);
+  const storeMatch = /ERR_PNPM_UNEXPECTED_STORE[\s\S]*?currently linked from the store at\s+["']([^"']+)["']/i.exec(combined);
+  if (storeMatch) {
+    const expectedRoot = stripPnpmStoreVersionSuffix(storeMatch[1]);
+    if (expectedRoot && isHealthyExistingDir(expectedRoot, fsImpl) && expectedRoot !== execEnv.NPM_CONFIG_STORE_DIR) {
+      onLog?.(`检测到已有 pnpm store (${expectedRoot})，自动切换重试…`);
+      const retryEnv = resolveHealthyStandalonePnpmEnv(env, dshHome, {
+        profile: target.profile,
+        fsImpl,
+        platform,
+        explicitOverrideStore: expectedRoot,
+      });
+      proc = await runRawStandalonePluginAddAsync(target, tgzToInstall, retryEnv, onLog);
+      combined = combineStandaloneProcOutput(proc);
+      if (proc.status === 0) return { ...proc, combinedOutput: combined, recovered: 'matched-existing-store' };
+    }
+  }
+
+  if (/ERR_PNPM_UNEXPECTED_STORE|ERR_PNPM_UNEXPECTED_VIRTUAL_STORE/i.test(combined) && dshHome && target.profile) {
+    const realProf = safeRealpath(path.join(dshHome, 'profiles', target.profile), fsImpl);
+    const nmDir = path.join(realProf, 'node_modules');
+    if (fsImpl.existsSync(nmDir)) {
+      onLog?.('检测到历史 node_modules 仓库路径冲突，自动安全重建依赖目录（完整保留配置与会话）…');
+      const bakDir = path.join(realProf, `node_modules.lt-bak-${Date.now()}`);
+      let moved = false;
+      try {
+        fsImpl.renameSync(nmDir, bakDir);
+        moved = true;
+        const freshEnv = resolveHealthyStandalonePnpmEnv(env, dshHome, { profile: target.profile, fsImpl, platform });
+        const retryProc = await runRawStandalonePluginAddAsync(target, tgzToInstall, freshEnv, onLog);
+        const retryCombined = combineStandaloneProcOutput(retryProc);
+        if (retryProc.status === 0) {
+          try { fsImpl.rmSync(bakDir, { recursive: true, force: true }); } catch {}
+          return { ...retryProc, combinedOutput: retryCombined, recovered: 'rebuilt-node-modules' };
+        }
+        try {
+          if (fsImpl.existsSync(nmDir)) fsImpl.rmSync(nmDir, { recursive: true, force: true });
+          fsImpl.renameSync(bakDir, nmDir);
+          moved = false;
+        } catch {}
+        return { ...retryProc, combinedOutput: retryCombined || combined, recovered: null };
+      } catch (mvErr) {
+        if (moved && fsImpl.existsSync(bakDir) && !fsImpl.existsSync(nmDir)) {
+          try { fsImpl.renameSync(bakDir, nmDir); } catch {}
+        }
+        combined = `${combined}\n[node_modules recovery error: ${mvErr instanceof Error ? mvErr.message : String(mvErr)}]`;
+      }
+    }
+  }
+  return { ...proc, combinedOutput: combined, recovered: null };
+}
+
+async function readResponseWithProgress(pkgRes, declaredSizeBytes, onChunkProgress) {
+  const hdrLen = Number(pkgRes.headers?.get?.('content-length') || 0);
+  const totalBytes = hdrLen > 0 ? hdrLen : (Number(declaredSizeBytes) > 0 ? Number(declaredSizeBytes) : null);
+
+  if (pkgRes.body && typeof pkgRes.body.getReader === 'function') {
+    const reader = pkgRes.body.getReader();
+    const chunks = [];
+    let downloadedBytes = 0;
+    const t0 = Date.now();
+    let lastEmit = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.byteLength > 0) {
+        const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+        chunks.push(buf);
+        downloadedBytes += buf.byteLength;
+        const now = Date.now();
+        if (now - lastEmit >= 120 || (totalBytes && downloadedBytes >= totalBytes)) {
+          lastEmit = now;
+          const elapsedSec = Math.max(0.05, (now - t0) / 1000);
+          const speedBytesPerSec = Math.round(downloadedBytes / elapsedSec);
+          const percent = totalBytes ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : null;
+          const etaSec = (totalBytes && speedBytesPerSec > 0)
+            ? Math.max(0, Math.round((totalBytes - downloadedBytes) / speedBytesPerSec))
+            : null;
+          onChunkProgress?.({ downloadedBytes, totalBytes, percent, speedBytesPerSec, etaSec });
+        }
+      }
+    }
+    const finalBuf = Buffer.concat(chunks);
+    const elapsedSec = Math.max(0.05, (Date.now() - t0) / 1000);
+    onChunkProgress?.({
+      downloadedBytes: finalBuf.byteLength,
+      totalBytes: totalBytes || finalBuf.byteLength,
+      percent: 100,
+      speedBytesPerSec: Math.round(finalBuf.byteLength / elapsedSec),
+      etaSec: 0,
+    });
+    return finalBuf;
+  }
+
+  const buf = Buffer.from(await pkgRes.arrayBuffer());
+  onChunkProgress?.({
+    downloadedBytes: buf.byteLength,
+    totalBytes: totalBytes || buf.byteLength,
+    percent: 100,
+    speedBytesPerSec: null,
+    etaSec: 0,
+  });
+  return buf;
+}
+
 export async function downloadAndInstallStandalone({
   targetId = null,
   customPath = null,
   track = 'closed-free',
   releaseTag = null,
-  mode = 'install', // 'install' | 'repair'
+  includePrerelease = false,
+  mode = 'install', // 'install' | 'repair' | 'download-only'
   confirmTrackSwitch = false,
   localTgzPath = null,
+  cacheDir = null,
   apiKeyEnvVar = '',
   apiKey = '',
   dshHome = null,
   fetchImpl = globalThis.fetch,
   runner = null,
   spawnSyncImpl = spawnSync,
+  onProgress = null,
 } = {}) {
+  const emit = (patch) => {
+    try { onProgress?.({ at: new Date().toISOString(), ...patch }); } catch {}
+  };
+  const isDownloadOnly = mode === 'download-only';
+
+  emit({ stage: 'checking', stageLabel: '检测本机 DSH 环境与目录路径', percent: 5 });
   const snap = scanDshTargets({ customPath, dshHome, spawnSyncImpl });
-  const target = (targetId ? snap.targets.find(t => t.id === targetId) : null) || snap.targets[0];
-  if (!target) {
-    throw new Error('未检测到本机已安装的 DeepSeek Harness，请先安装官方客户端（>= 0.2.2-rc.1），或在页面手动指定安装目录后点击“重新扫描”。');
-  }
-  if (!target.compatible) {
-    throw new Error(`当前 DSH 版本 (${target.dshVersion || '未知'}) 低于最低要求 0.2.2-alpha.2，请先更新 DSH 客户端。`);
-  }
-  if (target.kind === 'official-desktop' && target.desktopRunning) {
-    const err = new Error('DESKTOP_CLIENT_RUNNING: 检测到 DeepSeek Harness 正在运行，请先点击“一键安全关闭 DSH”或手动退出客户端后再开始安装。');
-    err.code = 'DESKTOP_CLIENT_RUNNING';
-    err.desktopRunning = true;
-    err.failedOperation = '检测运行中客户端';
-    throw err;
+  const effectiveCacheDir = cacheDir && String(cacheDir).trim()
+    ? path.resolve(String(cacheDir).trim())
+    : resolveDefaultDownloadCacheDir(snap.dshHome);
+
+  const target = (targetId ? snap.targets.find(t => t.id === targetId) : null) || snap.targets[0] || null;
+  if (!isDownloadOnly) {
+    if (!target) {
+      throw new Error('未检测到本机已安装的 DeepSeek Harness，请先安装官方客户端（>= 0.2.2-rc.1），或在页面手动指定安装目录后点击“重新扫描”。');
+    }
+    if (!target.compatible) {
+      throw new Error(`当前 DSH 版本 (${target.dshVersion || '未知'}) 低于最低要求 0.2.2-alpha.2，请先更新 DSH 客户端。`);
+    }
+    if (target.kind === 'official-desktop' && target.desktopRunning) {
+      const err = new Error('DESKTOP_CLIENT_RUNNING: 检测到 DeepSeek Harness 正在运行，请先点击“一键安全关闭 DSH”或手动退出客户端后再开始安装。');
+      err.code = 'DESKTOP_CLIENT_RUNNING';
+      err.desktopRunning = true;
+      err.failedOperation = '检测运行中客户端';
+      throw err;
+    }
   }
 
   let tgzToInstall = localTgzPath ? path.resolve(localTgzPath) : null;
   let versionInstalled = null;
   let resolvedTrack = TRACKS[track] ? track : 'closed-free';
   let resolvedTag = releaseTag ? String(releaseTag).trim() : null;
+  let sha256 = null;
+  let sha256Verified = false;
+  let cacheHit = false;
 
   if (tgzToInstall) {
+    emit({ stage: 'verifying', stageLabel: '校验本地离线安装包清单与兼容性', percent: 35, cacheDir: effectiveCacheDir });
     const pkgMeta = inspectStandaloneTgz(tgzToInstall);
-    if (pkgMeta.enginesDsh && target.dshVersion && !satisfiesStandaloneRange(target.dshVersion, pkgMeta.enginesDsh)) {
+    if (target && pkgMeta.enginesDsh && target.dshVersion && !satisfiesStandaloneRange(target.dshVersion, pkgMeta.enginesDsh)) {
       throw new Error(`HOST_INCOMPATIBLE: 当前 DSH 版本 (${target.dshVersion}) 不满足安装包要求 (${pkgMeta.enginesDsh})。`);
     }
     if (pkgMeta.track) resolvedTrack = pkgMeta.track;
-    if (target.installedTrack && resolvedTrack && target.installedTrack !== resolvedTrack && !confirmTrackSwitch) {
+    if (target && target.installedTrack && resolvedTrack && target.installedTrack !== resolvedTrack && !confirmTrackSwitch) {
       const fromLbl = TRACKS[target.installedTrack]?.shortLabel || target.installedTrack;
       const toLbl = TRACKS[resolvedTrack]?.shortLabel || resolvedTrack;
       throw new Error(`TRACK_SWITCH_CONFIRMATION_REQUIRED: 当前环境已安装 ${fromLbl} (v${target.installedLtVersion || '?'})，所选离线包属于 ${toLbl}，跨发行线切换需显式确认。`);
     }
+    sha256 = crypto.createHash('sha256').update(fs.readFileSync(tgzToInstall)).digest('hex');
     versionInstalled = pkgMeta.version;
   } else {
-    if (target.installedTrack && target.installedTrack !== resolvedTrack && !confirmTrackSwitch) {
+    if (!isDownloadOnly && target && target.installedTrack && target.installedTrack !== resolvedTrack && !confirmTrackSwitch) {
       const fromLbl = TRACKS[target.installedTrack]?.shortLabel || target.installedTrack;
       const toLbl = TRACKS[resolvedTrack]?.shortLabel || resolvedTrack;
       throw new Error(`TRACK_SWITCH_CONFIRMATION_REQUIRED: 当前环境已安装 ${fromLbl} (v${target.installedLtVersion || '?'})，切换至 ${toLbl} 需显式确认（配置与历史数据会完整保留）。`);
     }
     const tMeta = TRACKS[resolvedTrack] || TRACKS['closed-free'];
+    emit({ stage: 'checking', stageLabel: `查询 ${tMeta.shortLabel} 官方发行元数据…`, percent: 12, cacheDir: effectiveCacheDir });
     const relRes = await fetchImpl(tMeta.apiUrl, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LT-Unified-Downloader' },
     });
     if (!relRes.ok) throw new Error(`获取 GitHub Releases 列表失败 (HTTP ${relRes.status})`);
     const releases = await relRes.json();
-    const available = listPlatformReleases(releases, snap.platform);
+    const explicitPreTag = Boolean(resolvedTag && /-(?:rc|alpha|beta|preview)/i.test(resolvedTag));
+    const wantPrerelease = Boolean(includePrerelease) || explicitPreTag;
+    let available = listPlatformReleases(releases, snap.platform, { includePrerelease: wantPrerelease });
     let picked = null;
     if (resolvedTag) {
       picked = available.find(x => x.tag.toLowerCase() === resolvedTag.toLowerCase() || x.version === resolvedTag.replace(/^v/i, '')) || null;
+      if (!picked && !wantPrerelease) {
+        available = listPlatformReleases(releases, snap.platform, { includePrerelease: true });
+        picked = available.find(x => x.tag.toLowerCase() === resolvedTag.toLowerCase() || x.version === resolvedTag.replace(/^v/i, '')) || null;
+      }
       if (!picked) {
         throw new Error(`未在 ${tMeta.shortLabel} 中找到适配当前系统 (${snap.platform}) 的版本 ${resolvedTag}`);
       }
-    } else if (mode === 'repair' && target.installedLtVersion && target.installedTrack === resolvedTrack) {
-      picked = available.find(x => x.version === target.installedLtVersion) || available[0] || null;
+    } else if (mode === 'repair' && target?.installedLtVersion && target?.installedTrack === resolvedTrack) {
+      picked = available.find(x => x.version === target.installedLtVersion) || available.find(x => !x.prerelease) || available[0] || null;
     } else {
-      picked = available[0] || null;
+      picked = available.find(x => !x.prerelease) || available[0] || null;
     }
     const rel = picked?.rel ?? null;
     if (!rel) throw new Error(`未找到适配当前系统 (${snap.platform}) 的正式版 .tgz 安装包`);
@@ -1480,6 +1734,9 @@ export async function downloadAndInstallStandalone({
     const sumsAsset = rel.assets.find(a => /^SHA256SUMS/i.test(a.name));
 
     let expectedSha = null;
+    if (typeof tgzAsset.digest === 'string' && tgzAsset.digest.toLowerCase().startsWith('sha256:')) {
+      expectedSha = tgzAsset.digest.slice('sha256:'.length).trim().toLowerCase();
+    }
     if (sumsAsset?.browser_download_url) {
       const sr = await fetchImpl(sumsAsset.browser_download_url);
       if (sr.ok) {
@@ -1492,28 +1749,123 @@ export async function downloadAndInstallStandalone({
         }
       }
     }
-    const pkgRes = await fetchImpl(tgzAsset.browser_download_url);
-    if (!pkgRes.ok) throw new Error(`下载安装包失败 (HTTP ${pkgRes.status})`);
-    const buf = Buffer.from(await pkgRes.arrayBuffer());
-    const actualSha = crypto.createHash('sha256').update(buf).digest('hex');
-    if (expectedSha && actualSha !== expectedSha) {
-      throw new Error('安装包 SHA-256 校验未通过，已中止安装');
+
+    fs.mkdirSync(effectiveCacheDir, { recursive: true });
+    const cachedPath = path.join(effectiveCacheDir, tgzAsset.name);
+    let buf = null;
+
+    // Verified cache reuse (D02): if cached .tgz matches expectedSha, skip network download completely!
+    if (expectedSha && fs.existsSync(cachedPath)) {
+      try {
+        const cachedBuf = fs.readFileSync(cachedPath);
+        const cachedSha = crypto.createHash('sha256').update(cachedBuf).digest('hex');
+        if (cachedSha === expectedSha) {
+          buf = cachedBuf;
+          sha256 = cachedSha;
+          sha256Verified = true;
+          cacheHit = true;
+          emit({
+            stage: 'verifying',
+            stageLabel: `命中本地已校验缓存（${tgzAsset.name}），免重复下载`,
+            percent: 55,
+            downloadedBytes: buf.byteLength,
+            totalBytes: buf.byteLength,
+            cacheHit: true,
+            cacheDir: effectiveCacheDir,
+            logLine: `[cache] SHA-256 verified hit: ${cachedPath}`,
+          });
+        }
+      } catch {}
     }
+
+    if (!buf) {
+      emit({
+        stage: 'downloading',
+        stageLabel: `正在下载 ${tgzAsset.name}…`,
+        percent: 15,
+        downloadedBytes: 0,
+        totalBytes: tgzAsset.size ?? null,
+        cacheDir: effectiveCacheDir,
+        logLine: `[download] GET ${tgzAsset.browser_download_url}`,
+      });
+      const pkgRes = await fetchImpl(tgzAsset.browser_download_url);
+      if (!pkgRes.ok) throw new Error(`下载安装包失败 (HTTP ${pkgRes.status})`);
+      buf = await readResponseWithProgress(pkgRes, tgzAsset.size ?? null, p => {
+        emit({
+          stage: 'downloading',
+          stageLabel: `正在下载 ${tgzAsset.name}…`,
+          percent: p.percent != null ? Math.round(15 + (p.percent * 0.40)) : null,
+          downloadedBytes: p.downloadedBytes,
+          totalBytes: p.totalBytes,
+          speedBytesPerSec: p.speedBytesPerSec,
+          etaSec: p.etaSec,
+          cacheDir: effectiveCacheDir,
+        });
+      });
+      emit({ stage: 'verifying', stageLabel: '正在校验 SHA-256 与插件结构…', percent: 58, cacheDir: effectiveCacheDir });
+      const actualSha = crypto.createHash('sha256').update(buf).digest('hex');
+      if (expectedSha && actualSha !== expectedSha) {
+        throw new Error('安装包 SHA-256 校验未通过，已中止安装');
+      }
+      sha256 = actualSha;
+      sha256Verified = Boolean(expectedSha);
+      const tmpPath = `${cachedPath}.tmp-${process.pid}-${Date.now()}`;
+      fs.writeFileSync(tmpPath, buf);
+      fs.renameSync(tmpPath, cachedPath);
+    }
+
     const pkgMeta = inspectStandaloneTgz(buf);
-    if (pkgMeta.enginesDsh && target.dshVersion && !satisfiesStandaloneRange(target.dshVersion, pkgMeta.enginesDsh)) {
+    if (target && pkgMeta.enginesDsh && target.dshVersion && !satisfiesStandaloneRange(target.dshVersion, pkgMeta.enginesDsh)) {
       throw new Error(`HOST_INCOMPATIBLE: 当前 DSH 版本 (${target.dshVersion}) 不满足安装包要求 (${pkgMeta.enginesDsh})。`);
     }
-    const stageDir = path.join(snap.dshHome, 'leaderteam', 'installer-staging');
-    fs.mkdirSync(stageDir, { recursive: true });
-    tgzToInstall = path.join(stageDir, tgzAsset.name);
-    fs.writeFileSync(tgzToInstall, buf);
+    tgzToInstall = cachedPath;
     versionInstalled = pkgMeta.version || parsePlatformReleaseTag(rel.tag_name)?.version || String(rel.tag_name || '').replace(/^v/i, '');
   }
+
+  if (isDownloadOnly) {
+    emit({
+      stage: 'ready',
+      stageLabel: '下载并校验完成（仅下载模式）',
+      percent: 100,
+      cacheHit,
+      cacheDir: effectiveCacheDir,
+      logLine: `[done] Saved verified tarball to ${tgzToInstall} (sha256: ${sha256})`,
+    });
+    return {
+      ok: true,
+      mode: 'download-only',
+      track: resolvedTrack,
+      brand: TRACKS[resolvedTrack]?.brand || 'LT',
+      releaseTag: resolvedTag,
+      target,
+      versionInstalled,
+      tgzToInstall,
+      cacheDir: effectiveCacheDir,
+      cacheHit,
+      sha256,
+      sha256Verified,
+      desktopPatchHygiene: null,
+    };
+  }
+
+  emit({
+    stage: 'installing',
+    stageLabel: `正在安装 ${TRACKS[resolvedTrack]?.brand || 'LT'} v${versionInstalled || ''} 到 ${target.profile} profile…`,
+    percent: 68,
+    targetDir: target.installDir,
+    dshHome: snap.dshHome,
+    logLine: `[install] dsh plugin --profile ${target.profile} add ${tgzToInstall}`,
+  });
 
   if (typeof runner === 'function') {
     await runner({ target, tgzToInstall, dshHome: snap.dshHome, mode, track: resolvedTrack, releaseTag: resolvedTag });
   } else {
-    const proc = invokeStandalonePluginAdd(target, tgzToInstall, snap.dshHome, { spawnSyncImpl });
+    // Use non-blocking async spawn for real installs (keeps SSE progress responsive!); keep custom mock `spawnSyncImpl` path for unit tests
+    const proc = spawnSyncImpl !== spawnSync
+      ? invokeStandalonePluginAdd(target, tgzToInstall, snap.dshHome, { spawnSyncImpl })
+      : await invokeStandalonePluginAddAsync(target, tgzToInstall, snap.dshHome, {
+        onLog: line => emit({ stage: 'installing', stageLabel: '正在执行插件安装与依赖链接…', percent: 78, logLine: line }),
+      });
     if (proc.status !== 0) {
       const combined = proc.combinedOutput || combineStandaloneProcOutput(proc) || `安装退出码 ${proc.status}`;
       const err = new Error(combined);
@@ -1526,6 +1878,7 @@ export async function downloadAndInstallStandalone({
     }
   }
 
+  emit({ stage: 'configuring', stageLabel: '正在同步桌面端补丁与初始配置…', percent: 90, dshHome: snap.dshHome });
   let desktopPatchHygiene = null;
   if (target.profile === 'desktop' || target.kind === 'official-desktop') {
     desktopPatchHygiene = sanitizeDesktopCordisPatch({
@@ -1541,7 +1894,18 @@ export async function downloadAndInstallStandalone({
     const filtered = prev.split(/\r?\n/).filter(l => l.trim() && !l.trim().startsWith(`${apiKeyEnvVar}=`));
     filtered.push(`${apiKeyEnvVar}=${JSON.stringify(String(apiKey).trim())}`);
     fs.writeFileSync(envFile, `${filtered.join('\n')}\n`, { mode: 0o600 });
+    persistApiKeyToCredentialsYaml(snap.dshHome, apiKeyEnvVar, apiKey);
   }
+
+  emit({
+    stage: 'ready',
+    stageLabel: `${TRACKS[resolvedTrack]?.brand || 'LT'} v${versionInstalled || ''} 安装完成`,
+    percent: 100,
+    cacheHit,
+    cacheDir: effectiveCacheDir,
+    dshHome: snap.dshHome,
+    logLine: `[ready] Installed ${TRACKS[resolvedTrack]?.brand || 'LT'} v${versionInstalled || ''} into ${path.join(snap.dshHome, 'profiles', target.profile)}`,
+  });
 
   return {
     ok: true,
@@ -1552,6 +1916,11 @@ export async function downloadAndInstallStandalone({
     target,
     versionInstalled,
     tgzToInstall,
+    cacheDir: effectiveCacheDir,
+    cacheHit,
+    sha256,
+    sha256Verified,
+    dshHome: snap.dshHome,
     desktopPatchHygiene,
   };
 }
@@ -1629,78 +1998,148 @@ function readBoundedBody(req, maxBytes = 2 * 1024 * 1024) {
 
 export function renderStandaloneHtml(token) {
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="white">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Leader Team 统一下载与安装器 (LT / OLT)</title>
 <style>
   :root {
-    --bg:#f5f7f9; --surface:#fff; --surface-alt:#eef3f6; --ink:#1b3039; --muted:#566b75;
-    --accent:#2a657c; --accent-hover:#215164; --ok:#1f7a4c; --ok-bg:#e9f6ef;
-    --warn:#9a6700; --warn-bg:#fff8e6; --err:#a3263f; --err-bg:#fdecef; --line:#d6e0e6;
+    --bg:#F2F3F0; --surface:#FFFFFF; --surface-alt:#F7F8F6; --ink:#171A1D; --muted:#5C656E;
+    --accent:#3D6B5A; --accent-hover:#2F5547; --accent-soft:rgba(61,107,90,0.09);
+    --ok:#247349; --ok-bg:#ECF7F0; --ok-line:#BDE2CA;
+    --warn:#9A6208; --warn-bg:#FFF8EB; --warn-line:#EED49B;
+    --err:#B2372C; --err-bg:#FDF0EE; --err-line:#EFC2BC;
+    --line:#DFE3DD; --radius:10px;
+    --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  [data-theme="dark"] {
+    --bg:#111315; --surface:#181B1F; --surface-alt:#1F2429; --ink:#E7ECEF; --muted:#95A0AA;
+    --accent:#5FA58B; --accent-hover:#73B89E; --accent-soft:rgba(95,165,139,0.14);
+    --ok:#55B57D; --ok-bg:rgba(85,181,125,0.12); --ok-line:rgba(85,181,125,0.35);
+    --warn:#E0A443; --warn-bg:rgba(224,164,67,0.12); --warn-line:rgba(224,164,67,0.35);
+    --err:#E36B60; --err-bg:rgba(227,107,96,0.12); --err-line:rgba(227,107,96,0.35);
+    --line:#2B3138;
+  }
+  [data-theme="heluoxu"] {
+    --bg:#F6F1E6; --surface:#FFFDF8; --surface-alt:#F8F4EA; --ink:#1E221E; --muted:#646258;
+    --accent:#3B6354; --accent-hover:#2D4E42; --accent-soft:rgba(59,99,84,0.10);
+    --ok:#2E6A47; --ok-bg:#EEF6F0; --ok-line:#C2DEC9;
+    --warn:#9C6214; --warn-bg:#FCF5E6; --warn-line:#E9D09D;
+    --err:#9E3B33; --err-bg:#FBEFEC; --err-line:#E7C1BB;
+    --line:#E3DAC9;
   }
   * { box-sizing:border-box; }
-  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); max-width:860px; margin:24px auto 64px; padding:0 18px; line-height:1.55; }
-  .hero { background:linear-gradient(135deg,#1b3039 0%,#2a657c 100%); color:#fff; border-radius:10px; padding:22px 26px; margin-bottom:16px; }
-  .hero h1 { margin:0 0 6px; font-size:20.5px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .hero p { margin:0; font-size:13.5px; opacity:0.92; }
-  .pill { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; background:rgba(255,255,255,0.18); color:#fff; }
-  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px 22px; margin-bottom:14px; }
-  .card h2 { margin:0 0 10px; font-size:16px; }
-  .target-item { border:1.5px solid var(--line); border-radius:8px; padding:12px 15px; margin-bottom:10px; cursor:pointer; }
-  .target-item.selected { border-color:var(--accent); background:#f4f9fc; }
+  body { font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei UI",sans-serif; background:var(--bg); color:var(--ink); max-width:920px; margin:24px auto 64px; padding:0 18px; line-height:1.55; }
+  .hero { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:20px 24px; margin-bottom:16px; display:flex; flex-direction:column; gap:8px; }
+  .hero-top { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .hero h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.01em; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .hero p { margin:0; font-size:13px; color:var(--muted); }
+  .pill { display:inline-flex; align-items:center; padding:2px 9px; border-radius:99px; font-size:11.5px; font-weight:600; background:var(--accent-soft); color:var(--accent); border:1px solid var(--line); }
+  .theme-seg { display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden; background:var(--surface-alt); }
+  .theme-seg button { border:0; border-radius:0; padding:5px 10px; font-size:12px; font-weight:500; background:transparent; color:var(--muted); }
+  .theme-seg button[aria-pressed="true"] { background:var(--surface); color:var(--ink); font-weight:600; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px 22px; margin-bottom:14px; }
+  .card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .card h2 { margin:0; font-size:15.5px; font-weight:650; }
+  .step-tag { font-size:11px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; }
+  .target-item { border:1.5px solid var(--line); border-radius:8px; padding:12px 15px; margin-bottom:10px; cursor:pointer; background:var(--surface); transition:border-color .15s; }
+  .target-item.selected { border-color:var(--accent); background:var(--accent-soft); }
   .track-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
-  @media (max-width:640px) { .track-grid { grid-template-columns:1fr; } }
-  .track-card { border:1.5px solid var(--line); border-radius:8px; padding:12px 14px; cursor:pointer; background:#fff; }
-  .track-card.selected { border-color:var(--accent); background:#f4f9fc; }
+  .path-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+  @media (max-width:680px) { .track-grid, .path-grid { grid-template-columns:1fr; } }
+  .track-card { border:1.5px solid var(--line); border-radius:8px; padding:12px 14px; cursor:pointer; background:var(--surface); }
+  .track-card.selected { border-color:var(--accent); background:var(--accent-soft); }
   .track-card b { display:block; font-size:14px; margin-bottom:3px; }
   .track-card span { font-size:12.5px; color:var(--muted); }
-  .badge { display:inline-block; padding:2px 9px; border-radius:99px; font-size:12px; font-weight:600; }
+  .badge { display:inline-flex; align-items:center; padding:2px 9px; border-radius:99px; font-size:11.5px; font-weight:600; }
   .badge.ok { background:var(--ok-bg); color:var(--ok); }
   .badge.warn { background:var(--warn-bg); color:var(--warn); }
   .badge.err { background:var(--err-bg); color:var(--err); }
-  .field { margin-top:12px; }
-  .field label { display:block; font-size:13px; font-weight:600; margin-bottom:5px; }
-  input, select { padding:9px 11px; border:1px solid var(--line); border-radius:6px; width:100%; font-size:14px; background:#fff; color:var(--ink); }
+  .field { margin-top:11px; }
+  .field label { display:block; font-size:12.5px; font-weight:600; margin-bottom:5px; color:var(--ink); }
+  input, select { padding:8px 11px; border:1px solid var(--line); border-radius:7px; width:100%; font-size:13.5px; background:var(--surface); color:var(--ink); }
+  input.mono { font-family:var(--mono); font-size:12.5px; }
   input[type="checkbox"] { width:auto; padding:0; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  button, a.btn-link { background:var(--accent); color:#fff; border:1px solid transparent; border-radius:7px; padding:9px 16px; font-size:13.5px; font-weight:600; cursor:pointer; white-space:nowrap; text-decoration:none; display:inline-block; }
+  button, a.btn-link { background:var(--accent); color:#fff; border:1px solid transparent; border-radius:7px; padding:8px 15px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
   button:hover:not(:disabled), a.btn-link:hover { background:var(--accent-hover); }
   button.secondary, a.btn-link.secondary { background:var(--surface-alt); color:var(--ink); border-color:var(--line); }
-  button.warn-btn { background:#9a6700; color:#fff; }
+  button.secondary:hover:not(:disabled) { border-color:var(--accent); }
+  button.warn-btn { background:var(--warn); color:#fff; }
   button:disabled { opacity:0.55; cursor:not-allowed; }
-  .alert { padding:12px 15px; border-radius:8px; margin-top:10px; font-size:13.5px; }
-  .alert.ok { background:var(--ok-bg); color:var(--ok); border:1px solid #b5e2c9; }
-  .alert.warn { background:var(--warn-bg); color:var(--warn); border:1px solid #f0d799; }
-  .alert.err { background:var(--err-bg); color:var(--err); border:1px solid #f2b8c4; }
-  .muted { color:var(--muted); font-size:12.5px; }
+  .alert { padding:12px 15px; border-radius:8px; margin-top:10px; font-size:13px; }
+  .alert.ok { background:var(--ok-bg); color:var(--ok); border:1px solid var(--ok-line); }
+  .alert.warn { background:var(--warn-bg); color:var(--warn); border:1px solid var(--warn-line); }
+  .alert.err { background:var(--err-bg); color:var(--err); border:1px solid var(--err-line); }
+  .muted { color:var(--muted); font-size:12px; }
+  .mono { font-family:var(--mono); }
+  .num { font-variant-numeric:tabular-nums; }
+  .path-summary { background:var(--surface-alt); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:10px; font-size:12px; display:grid; gap:4px; }
+  .prog-panel { margin-top:12px; padding:14px 16px; border:1px solid var(--line); border-radius:8px; background:var(--surface-alt); display:none; }
+  .prog-panel.active { display:block; }
+  .stages { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:10px; }
+  @media (max-width:680px) { .stages { grid-template-columns:repeat(3,1fr); } }
+  .st-pill { font-size:11.5px; text-align:center; padding:4px 6px; border-radius:6px; border:1px solid var(--line); color:var(--muted); background:var(--surface); }
+  .st-pill.cur { border-color:var(--accent); color:var(--accent); font-weight:650; background:var(--accent-soft); }
+  .st-pill.done { border-color:var(--ok-line); color:var(--ok); background:var(--ok-bg); }
+  .st-pill.fail { border-color:var(--err-line); color:var(--err); background:var(--err-bg); }
+  .bar-track { height:9px; border-radius:999px; background:var(--line); overflow:hidden; position:relative; }
+  .bar-fill { height:100%; background:var(--accent); width:0%; transition:width .18s ease; }
+  .bar-fill.indeterminate { width:35%; animation:lt-slide 1.2s infinite ease-in-out; }
+  @keyframes lt-slide { 0% { transform:translateX(-110%); } 100% { transform:translateX(320%); } }
+  .prog-meta { display:flex; justify-content:space-between; gap:10px; margin-top:7px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+  .live-log { margin-top:8px; max-height:150px; overflow:auto; font-family:var(--mono); font-size:11.5px; background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:8px 10px; white-space:pre-wrap; word-break:break-all; color:var(--muted); }
 </style>
 </head>
 <body>
 <div class="hero">
-  <h1>Leader Team 统一下载与安装器 <span class="pill" id="osPill">检测平台中…</span></h1>
-  <p>统一支持 LT（闭源免费版）与 OLT（开源维护版）× Windows / Linux 四条发行线：自动识别系统架构与已有 DSH 环境，支持首次安装、版本选择、修复安装与 SHA-256 强校验。</p>
-</div>
-
-<div class="card">
-  <h2>第一步：环境检测与 DeepSeek Harness 目标</h2>
-  <div id="env">正在扫描本机环境…</div>
-  <div class="field">
-    <label for="customDshInput">手动指定 DeepSeek Harness 安装目录（可选）</label>
-    <div class="row">
-      <input id="customDshInput" type="text" placeholder="例如 D:\\Apps\\DeepSeek-Harness（留空自动扫描全盘、注册表与 CLI 环境）" style="flex:1" />
-      <button id="btnRescan" class="secondary" type="button">重新扫描</button>
+  <div class="hero-top">
+    <h1>Leader Team 统一下载与安装器 <span class="pill" id="osPill">检测平台中…</span></h1>
+    <div class="theme-seg" role="group" aria-label="界面主题">
+      <button type="button" data-theme-pick="white" aria-pressed="true">宣白</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">墨夜</button>
+      <button type="button" data-theme-pick="heluoxu" aria-pressed="false">河洛序</button>
     </div>
   </div>
+  <p>统一支持 LT（闭源免费版）与 OLT（开源维护版）× Windows / Linux 四条发行线：全路径透明可配置、实时字节流下载进度与校验缓存复用，零 AI 辅助一键安装。</p>
 </div>
 
 <div class="card">
-  <h2>第二步：选择产品发行线、版本与安装方式</h2>
+  <div class="card-head">
+    <h2>第一步：环境检测与目录路径配置（全透明可修改）</h2>
+    <span class="step-tag">Step 1 / 3</span>
+  </div>
+  <div id="env">正在扫描本机环境…</div>
+  <div class="path-grid">
+    <div class="field" style="margin-top:4px">
+      <label for="customDshInput">手动指定 DeepSeek Harness 安装目录（可选）</label>
+      <input id="customDshInput" class="mono" type="text" placeholder="例如 D:\\Apps\\DeepSeek-Harness" />
+    </div>
+    <div class="field" style="margin-top:4px">
+      <label for="dshHomeInput">DSH 数据与插件根目录 (DSH_HOME)</label>
+      <input id="dshHomeInput" class="mono" type="text" placeholder="默认 ~/.dsh（可修改为自定义数据目录）" />
+    </div>
+  </div>
+  <div class="field">
+    <label for="cacheDirInput">安装包下载与校验缓存目录（支持 SHA-256 命中免重复下载）</label>
+    <div class="row">
+      <input id="cacheDirInput" class="mono" type="text" placeholder="默认 <DSH_HOME>/leaderteam/installer-cache" style="flex:1" />
+      <button id="btnRescan" class="secondary" type="button">应用路径并重新扫描</button>
+    </div>
+  </div>
+  <div class="path-summary mono" id="pathSummary">正在解析生效路径…</div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>第二步：选择产品发行线、版本与安装方式</h2>
+    <span class="step-tag">Step 2 / 3</span>
+  </div>
   <div class="track-grid" id="trackGrid">
     <div class="track-card selected" data-track="closed-free">
       <b>Leader Team (LT · 闭源免费版)</b>
-      <span>预编译 Rust 映射核心 + 轻量多 Key 网关 + 河洛工作台 + 衡账三源对账</span>
+      <span>预编译 Rust 映射核心 + LT 独立中转站 + 河洛工作台 + 衡账三源对账</span>
     </div>
     <div class="track-card" data-track="open-source">
       <b>Open Leader Team (OLT · 开源版)</b>
@@ -1711,8 +2150,9 @@ export function renderStandaloneHtml(token) {
   <div class="field">
     <label for="modeSelect">安装方式</label>
     <select id="modeSelect">
-      <option value="online">在线下载并安装指定版本（自动校验 SHA-256）</option>
+      <option value="online">在线下载并安装指定版本（实时进度 + SHA-256 校验 + 缓存复用）</option>
       <option value="repair">修复安装（保留全部本地配置、凭据与历史会话）</option>
+      <option value="download-only">仅下载并校验安装包到缓存目录（暂不执行安装）</option>
       <option value="upload-tgz">上传本地 .tgz 离线安装包…</option>
       <option value="path-tgz">输入本地 .tgz 安装包完整路径…</option>
     </select>
@@ -1724,6 +2164,10 @@ export function renderStandaloneHtml(token) {
       <select id="versionSelect" style="flex:1"><option value="">正在读取官方 Release 列表…</option></select>
       <button id="btnRefreshRel" class="secondary" type="button">刷新版本列表</button>
     </div>
+    <label class="row" style="margin-top:6px;cursor:pointer;font-size:12.5px;color:var(--muted)">
+      <input type="checkbox" id="chkIncludePrerelease" />
+      <span>显示测试版 / RC 候选版本（Pre-release，如 windows-v2.6.3-rc.1）</span>
+    </label>
     <div class="muted" id="versionMeta" style="margin-top:4px"></div>
   </div>
 
@@ -1739,7 +2183,7 @@ export function renderStandaloneHtml(token) {
 
   <div class="field" id="localPathRow" style="display:none">
     <label for="localTgzPathInput">填写本地 <code>.tgz</code> 安装包完整路径</label>
-    <input id="localTgzPathInput" type="text" placeholder="例如 D:\\Downloads\\dsh-leaderteam-2.6.2.tgz" />
+    <input id="localTgzPathInput" class="mono" type="text" placeholder="例如 D:\\Downloads\\dsh-leaderteam-2.6.3.tgz" />
   </div>
 
   <div id="trackSwitchBox" class="alert warn" style="display:none">
@@ -1752,7 +2196,7 @@ export function renderStandaloneHtml(token) {
   </div>
 
   <div class="field">
-    <label for="envVar">可选：预设初始模型 API Key（也可安装完成后在控制台 GUI 接入或自动发现本机 Magpie）</label>
+    <label for="envVar">可选：预设初始模型 API Key（同时写入 <code>.env</code> 与 <code>.credentials.yaml</code>，也可进界面后再配）</label>
     <div class="row">
       <select id="envVar" style="width:260px">
         <option value="">暂不填写（推荐进控制台配置）</option>
@@ -1762,18 +2206,42 @@ export function renderStandaloneHtml(token) {
         <option value="OPENAI_API_KEY">OpenAI (OPENAI_API_KEY)</option>
         <option value="LEADERTEAM_MAGPIE_KEY">Magpie 网关 (LEADERTEAM_MAGPIE_KEY)</option>
       </select>
-      <input id="apiKey" type="password" placeholder="粘贴 API Key（本地安全写入 ~/.dsh/.env）" style="flex:1" />
+      <input id="apiKey" class="mono" type="password" placeholder="粘贴 API Key（仅存本机）" style="flex:1" />
     </div>
   </div>
 </div>
 
 <div class="card">
-  <h2>第三步：执行安装并启动</h2>
+  <div class="card-head">
+    <h2>第三步：实时进度与启动</h2>
+    <span class="step-tag">Step 3 / 3</span>
+  </div>
   <div class="row">
-    <button id="btnInstall" type="button">立即校验并安装</button>
+    <button id="btnInstall" type="button">立即下载校验并安装</button>
     <button id="btnLaunch" class="secondary" type="button" style="display:none">立即启动 DeepSeek Harness 客户端</button>
   </div>
-  <div class="muted" style="margin-top:8px">提示：安装完成后，后续小版本升级可直接在 Leader Team 控制台「设置 → 版本更新与兼容」一键完成，无需重复运行下载器。</div>
+
+  <div class="prog-panel" id="progPanel" data-testid="lt-downloader-progress">
+    <div class="stages" id="stageRow">
+      <div class="st-pill" data-st="checking">1. 检测</div>
+      <div class="st-pill" data-st="downloading">2. 下载</div>
+      <div class="st-pill" data-st="verifying">3. 校验</div>
+      <div class="st-pill" data-st="installing">4. 安装</div>
+      <div class="st-pill" data-st="configuring">5. 配置</div>
+      <div class="st-pill" data-st="ready">6. 完成</div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="progBar"></div></div>
+    <div class="prog-meta num">
+      <span id="progLabel">准备就绪</span>
+      <span id="progStats"></span>
+    </div>
+    <details id="liveLogWrap" style="margin-top:8px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600">实时执行日志</summary>
+      <div class="live-log" id="liveLog"></div>
+    </details>
+  </div>
+
+  <div class="muted" style="margin-top:8px">提示：安装完成后默认进入 Leader Team 河洛序工作台（可随时一键无刷新切换至 DSH 增强前端）；后续小版本更新可在设置页一键完成。</div>
   <div id="msg"></div>
 </div>
 
@@ -1785,16 +2253,106 @@ export function renderStandaloneHtml(token) {
   let selectedTrack = 'closed-free';
   let trackInitializedFromInstalled = false;
   const releasesCache = {};
+  const STAGE_ORDER = ['checking', 'downloading', 'verifying', 'installing', 'configuring', 'ready'];
+
+  // Theme initialization
+  const savedTheme = localStorage.getItem('lt.installer.theme') || 'white';
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('lt.installer.theme', t);
+    document.querySelectorAll('[data-theme-pick]').forEach(b => {
+      b.setAttribute('aria-pressed', b.getAttribute('data-theme-pick') === t ? 'true' : 'false');
+    });
+  }
+  applyTheme(savedTheme);
+  document.querySelectorAll('[data-theme-pick]').forEach(b => {
+    b.onclick = () => applyTheme(b.getAttribute('data-theme-pick'));
+  });
 
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-
+  function fmtBytes(b) {
+    if (b == null || !Number.isFinite(Number(b))) return '';
+    const v = Number(b);
+    if (v >= 1048576) return (v / 1048576).toFixed(2) + ' MB';
+    if (v >= 1024) return (v / 1024).toFixed(1) + ' KB';
+    return v + ' B';
+  }
   function currentTarget() {
     if (!state || !state.targets || !state.targets.length) return null;
     return state.targets.find(t => t.id === tid) || state.targets[0];
   }
+
+  function updatePathSummary() {
+    const el = document.getElementById('pathSummary');
+    if (!state) return;
+    const t = currentTarget();
+    const home = document.getElementById('dshHomeInput').value.trim() || state.dshHome || '';
+    const cache = document.getElementById('cacheDirInput').value.trim() || state.defaultCacheDir || '';
+    const prof = t ? (home + (state.platform === 'win32' ? '\\\\profiles\\\\' : '/profiles/') + t.profile) : '（未选中 DSH 目标）';
+    el.innerHTML =
+      '<div><b>DSH 客户端目录：</b>' + esc(t ? t.installDir : '未检测到') + '</div>' +
+      '<div><b>DSH 数据根目录 (DSH_HOME)：</b>' + esc(home) + '</div>' +
+      '<div><b>目标插件安装目录：</b>' + esc(prof) + '</div>' +
+      '<div><b>下载与 SHA-256 缓存目录：</b>' + esc(cache) + '</div>';
+  }
+
+  function renderProgressEvent(ev) {
+    const panel = document.getElementById('progPanel');
+    const bar = document.getElementById('progBar');
+    const lbl = document.getElementById('progLabel');
+    const stats = document.getElementById('progStats');
+    const logEl = document.getElementById('liveLog');
+    panel.classList.add('active');
+    const st = ev.stage || 'checking';
+    const curIdx = STAGE_ORDER.indexOf(st);
+    document.querySelectorAll('#stageRow .st-pill').forEach(p => {
+      const ps = p.getAttribute('data-st');
+      const idx = STAGE_ORDER.indexOf(ps);
+      p.classList.remove('cur', 'done', 'fail');
+      if (st === 'failed') {
+        if (idx === curIdx) p.classList.add('fail');
+      } else if (st === 'ready') {
+        p.classList.add('done');
+      } else if (idx >= 0 && curIdx >= 0) {
+        if (idx < curIdx) p.classList.add('done');
+        else if (idx === curIdx) p.classList.add('cur');
+      }
+    });
+    if (ev.percent != null && Number.isFinite(Number(ev.percent))) {
+      bar.classList.remove('indeterminate');
+      bar.style.width = Math.max(2, Math.min(100, Number(ev.percent))) + '%';
+    } else {
+      bar.classList.add('indeterminate');
+    }
+    lbl.textContent = ev.stageLabel || st;
+    const parts = [];
+    if (ev.cacheHit) parts.push('缓存命中');
+    if (ev.downloadedBytes != null) {
+      parts.push(fmtBytes(ev.downloadedBytes) + (ev.totalBytes ? (' / ' + fmtBytes(ev.totalBytes)) : ''));
+    }
+    if (ev.speedBytesPerSec) parts.push(fmtBytes(ev.speedBytesPerSec) + '/s');
+    if (ev.etaSec != null && ev.etaSec > 0) parts.push('预计剩余 ' + ev.etaSec + 's');
+    if (ev.percent != null) parts.push(ev.percent + '%');
+    stats.textContent = parts.join(' · ');
+    if (ev.logLine) {
+      logEl.textContent += (logEl.textContent ? '\\n' : '') + ev.logLine;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  // Subscribe to SSE live progress channel
+  try {
+    const es = new EventSource('/events?token=' + encodeURIComponent(tok));
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev && ev.stage) renderProgressEvent(ev);
+      } catch {}
+    };
+  } catch {}
 
   function updateTrackSwitchWarning() {
     const t = currentTarget();
@@ -1815,18 +2373,20 @@ export function renderStandaloneHtml(token) {
   async function loadReleasesForTrack(track, force) {
     const sel = document.getElementById('versionSelect');
     const meta = document.getElementById('versionMeta');
-    if (!force && releasesCache[track]) {
-      renderReleaseOptions(releasesCache[track]);
+    const includePre = Boolean(document.getElementById('chkIncludePrerelease')?.checked);
+    const cacheKey = track + ':' + (includePre ? 'pre' : 'stable');
+    if (!force && releasesCache[cacheKey]) {
+      renderReleaseOptions(releasesCache[cacheKey]);
       return;
     }
     sel.innerHTML = '<option value="">正在从 GitHub 读取可用版本…</option>';
     meta.textContent = '';
     try {
-      const r = await fetch('/releases?track=' + encodeURIComponent(track) + '&token=' + encodeURIComponent(tok));
+      const r = await fetch('/releases?track=' + encodeURIComponent(track) + '&includePrerelease=' + (includePre ? '1' : '0') + '&token=' + encodeURIComponent(tok));
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || '读取失败');
-      releasesCache[track] = j.releases || [];
-      renderReleaseOptions(releasesCache[track]);
+      releasesCache[cacheKey] = j.releases || [];
+      renderReleaseOptions(releasesCache[cacheKey]);
     } catch (e) {
       sel.innerHTML = '<option value="">自动拉取最新版（列表读取失败：' + esc(e.message) + '）</option>';
       meta.textContent = '网络受限时可切换“安装方式”使用本地 .tgz 离线安装包。';
@@ -1837,20 +2397,25 @@ export function renderStandaloneHtml(token) {
     const sel = document.getElementById('versionSelect');
     const meta = document.getElementById('versionMeta');
     if (!list || !list.length) {
-      sel.innerHTML = '<option value="">未找到当前系统可用的正式版本（可改用本地 .tgz）</option>';
+      sel.innerHTML = '<option value="">未找到当前系统可用的版本（可勾选显示 RC 或改用本地 .tgz）</option>';
       meta.textContent = '';
       return;
     }
-    sel.innerHTML = list.map((x, idx) => {
+    sel.innerHTML = list.map(x => {
       const sizeMb = x.assetSize ? (' · ' + (x.assetSize / 1048576).toFixed(2) + ' MB') : '';
-      const prefix = idx === 0 ? '★ 最新推荐 · ' : '';
+      const prefix = x.prerelease ? '[RC 预览版] ' : (x.isLatest ? '★ 最新稳定版 · ' : '');
       return '<option value="' + esc(x.tag) + '">' + esc(prefix + x.tag + ' (v' + x.version + sizeMb + ')') + '</option>';
     }).join('');
-    const first = list[0];
-    meta.textContent = '默认选中 ' + first.tag + ' · 安装包：' + first.assetName + '（已适配当前操作系统）';
+    const defaultItem = list.find(x => x.isLatest) || list[0];
+    if (defaultItem) sel.value = defaultItem.tag;
+    const renderMeta = (hit) => {
+      if (!hit) { meta.textContent = ''; return; }
+      meta.textContent = (hit.prerelease ? '已选 RC 候选版 ' : '已选稳定版 ') + hit.tag + ' · 安装包：' + hit.assetName + '（已适配当前操作系统）';
+    };
+    renderMeta(defaultItem);
     sel.onchange = () => {
-      const hit = list.find(x => x.tag === sel.value) || list[0];
-      if (hit) meta.textContent = '已选 ' + hit.tag + ' · 安装包：' + hit.assetName;
+      const hit = list.find(x => x.tag === sel.value) || defaultItem;
+      renderMeta(hit);
     };
   }
 
@@ -1864,11 +2429,13 @@ export function renderStandaloneHtml(token) {
 
   function syncModeRows() {
     const mode = document.getElementById('modeSelect').value;
-    document.getElementById('versionRow').style.display = (mode === 'online' || mode === 'repair') ? 'block' : 'none';
+    document.getElementById('versionRow').style.display = (mode === 'online' || mode === 'repair' || mode === 'download-only') ? 'block' : 'none';
     document.getElementById('bundledRow').style.display = mode === 'bundled' ? 'block' : 'none';
     document.getElementById('uploadRow').style.display = mode === 'upload-tgz' ? 'block' : 'none';
     document.getElementById('localPathRow').style.display = mode === 'path-tgz' ? 'block' : 'none';
-    document.getElementById('btnInstall').textContent = mode === 'repair' ? '开始修复安装（保留配置）' : '立即校验并安装';
+    document.getElementById('btnInstall').textContent =
+      mode === 'repair' ? '开始修复安装（保留配置）'
+        : (mode === 'download-only' ? '仅下载并校验到缓存目录' : '立即下载校验并安装');
     updateTrackSwitchWarning();
   }
 
@@ -1876,6 +2443,10 @@ export function renderStandaloneHtml(token) {
     state = d;
     const platLabel = (d.platform === 'win32' ? 'Windows' : (d.platform === 'linux' ? 'Linux' : d.platform)) + ' ' + (d.arch || '');
     document.getElementById('osPill').textContent = platLabel;
+    const homeInput = document.getElementById('dshHomeInput');
+    if (!homeInput.value.trim() && d.dshHome) homeInput.value = d.dshHome;
+    const cacheInput = document.getElementById('cacheDirInput');
+    if (!cacheInput.value.trim() && d.defaultCacheDir) cacheInput.value = d.defaultCacheDir;
 
     const envEl = document.getElementById('env');
     if (!d.targets || !d.targets.length) {
@@ -1886,7 +2457,7 @@ export function renderStandaloneHtml(token) {
         '<a class="btn-link" href="https://deepseekdsh.com" target="_blank" rel="noopener">前往官网下载 DeepSeek Harness</a>' +
         '<button type="button" class="secondary" id="btnQuickRescan">我已安装，重新扫描</button>' +
         '</div>' +
-        '<div class="muted" style="margin-top:6px">如你已安装到自定义盘符，请在下方输入框粘贴安装目录（如 <code>D:\\\\Apps\\\\DeepSeek-Harness</code>）后点击“重新扫描”。</div></div>';
+        '<div class="muted" style="margin-top:6px">如你已安装到自定义盘符，请在下方输入框粘贴安装目录（如 <code>D:\\\\Apps\\\\DeepSeek-Harness</code>）后点击“应用路径并重新扫描”。</div></div>';
       const qBtn = document.getElementById('btnQuickRescan');
       if (qBtn) qBtn.onclick = () => doScan();
     } else {
@@ -1910,7 +2481,7 @@ export function renderStandaloneHtml(token) {
           : '';
         return '<div class="target-item ' + (t.id === tid ? 'selected' : '') + '" data-tid="' + esc(t.id) + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>' + esc(t.label) + '</b><span class="badge ' + badgeCls + '">' + esc(badgeTxt) + '</span></div>' +
-          '<div style="font-size:12.5px;color:var(--muted);margin-top:4px">' + esc(t.installDir) + ltTxt + '</div>' +
+          '<div class="mono" style="font-size:12px;color:var(--muted);margin-top:4px">' + esc(t.installDir) + ltTxt + '</div>' +
           runWarn + initWarn + '</div>';
       }).join('');
 
@@ -1940,18 +2511,18 @@ export function renderStandaloneHtml(token) {
           ev.stopPropagation();
           btn.disabled = true;
           const customPath = document.getElementById('customDshInput').value.trim();
+          const dshHome = document.getElementById('dshHomeInput').value.trim();
           await fetch('/launch?token=' + encodeURIComponent(tok), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetId: tid, customPath: customPath || null }),
+            body: JSON.stringify({ targetId: tid, customPath: customPath || null, dshHome: dshHome || null }),
           });
-          document.getElementById('msg').innerHTML = '<div class="alert ok">已打开 DeepSeek Harness 客户端：看到主界面后请点上方“重新扫描”再点“一键安全关闭 DSH”，即可一键安装！</div>';
+          document.getElementById('msg').innerHTML = '<div class="alert ok">已打开 DeepSeek Harness 客户端：看到主界面后请点上方“应用路径并重新扫描”再点“一键安全关闭 DSH”，即可一键安装！</div>';
           btn.disabled = false;
         };
       });
     }
 
-    // Bundled local tarballs option if present beside launcher
     const modeSel = document.getElementById('modeSelect');
     const hasBundled = Array.isArray(d.bundledTarballs) && d.bundledTarballs.length > 0;
     const existingBundledOpt = modeSel.querySelector('option[value="bundled"]');
@@ -1959,20 +2530,24 @@ export function renderStandaloneHtml(token) {
       const opt = document.createElement('option');
       opt.value = 'bundled';
       opt.textContent = '使用当前目录随附离线安装包 (' + d.bundledTarballs[0].fileName + ')';
-      modeSel.insertBefore(opt, modeSel.children[2]);
+      modeSel.insertBefore(opt, modeSel.children[3]);
     }
     if (hasBundled) {
       document.getElementById('bundledSelect').innerHTML = d.bundledTarballs.map(b =>
         '<option value="' + esc(b.path) + '">' + esc(b.fileName + ' (v' + b.version + ')') + '</option>'
       ).join('');
     }
+    updatePathSummary();
     syncTrackCards();
     syncModeRows();
   }
 
   async function doScan() {
     const customPath = document.getElementById('customDshInput').value.trim();
-    const qs = '/scan?token=' + encodeURIComponent(tok) + (customPath ? '&customPath=' + encodeURIComponent(customPath) : '');
+    const dshHome = document.getElementById('dshHomeInput').value.trim();
+    const qs = '/scan?token=' + encodeURIComponent(tok)
+      + (customPath ? '&customPath=' + encodeURIComponent(customPath) : '')
+      + (dshHome ? '&dshHome=' + encodeURIComponent(dshHome) : '');
     const r = await fetch(qs);
     const d = await r.json();
     if (customPath && d.targets && d.targets.length > 0) tid = d.targets[0].id;
@@ -1988,7 +2563,10 @@ export function renderStandaloneHtml(token) {
   });
   document.getElementById('modeSelect').onchange = syncModeRows;
   document.getElementById('btnRefreshRel').onclick = () => loadReleasesForTrack(selectedTrack, true);
+  document.getElementById('chkIncludePrerelease').onchange = () => loadReleasesForTrack(selectedTrack, true);
   document.getElementById('btnRescan').onclick = () => doScan();
+  document.getElementById('dshHomeInput').addEventListener('input', updatePathSummary);
+  document.getElementById('cacheDirInput').addEventListener('input', updatePathSummary);
   document.getElementById('customDshInput').addEventListener('keydown', ev => {
     if (ev.key === 'Enter') { ev.preventDefault(); doScan(); }
   });
@@ -1997,39 +2575,47 @@ export function renderStandaloneHtml(token) {
     const btn = document.getElementById('btnInstall');
     const m = document.getElementById('msg');
     const customPath = document.getElementById('customDshInput').value.trim();
+    const dshHome = document.getElementById('dshHomeInput').value.trim();
+    const cacheDir = document.getElementById('cacheDirInput').value.trim();
+    document.getElementById('liveLog').textContent = '';
     btn.disabled = true;
     try {
-      const latest = await doScan();
-      const chosen = latest.targets && (latest.targets.find(t => t.id === tid) || latest.targets[0]);
-      if (chosen && chosen.kind === 'official-desktop' && chosen.desktopRunning) {
-        m.innerHTML =
-          '<div class="alert warn"><strong>检测到 DeepSeek Harness 正在运行</strong>' +
-          '<div style="margin-top:4px">安装或升级桌面端插件前需要先关闭运行中的 DSH 客户端（含托盘图标）。</div>' +
-          '<div class="row" style="margin-top:8px"><button type="button" class="warn-btn" id="btnInlineCloseAndRetry">一键安全关闭 DSH 并继续安装</button></div></div>';
-        const inlineBtn = document.getElementById('btnInlineCloseAndRetry');
-        if (inlineBtn) {
-          inlineBtn.onclick = async () => {
-            inlineBtn.disabled = true;
-            inlineBtn.textContent = '正在关闭 DSH…';
-            try {
-              await fetch('/close-desktop?token=' + encodeURIComponent(tok), { method: 'POST' });
-              await doScan();
-              btn.click();
-            } finally {
-              inlineBtn.disabled = false;
-            }
-          };
+      const mode = document.getElementById('modeSelect').value;
+      if (mode !== 'download-only') {
+        const latest = await doScan();
+        const chosen = latest.targets && (latest.targets.find(t => t.id === tid) || latest.targets[0]);
+        if (chosen && chosen.kind === 'official-desktop' && chosen.desktopRunning) {
+          m.innerHTML =
+            '<div class="alert warn"><strong>检测到 DeepSeek Harness 正在运行</strong>' +
+            '<div style="margin-top:4px">安装或升级桌面端插件前需要先关闭运行中的 DSH 客户端（含托盘图标）。</div>' +
+            '<div class="row" style="margin-top:8px"><button type="button" class="warn-btn" id="btnInlineCloseAndRetry">一键安全关闭 DSH 并继续安装</button></div></div>';
+          const inlineBtn = document.getElementById('btnInlineCloseAndRetry');
+          if (inlineBtn) {
+            inlineBtn.onclick = async () => {
+              inlineBtn.disabled = true;
+              inlineBtn.textContent = '正在关闭 DSH…';
+              try {
+                await fetch('/close-desktop?token=' + encodeURIComponent(tok), { method: 'POST' });
+                await doScan();
+                btn.click();
+              } finally {
+                inlineBtn.disabled = false;
+              }
+            };
+          }
+          return;
         }
-        return;
       }
 
-      const mode = document.getElementById('modeSelect').value;
       const body = {
         targetId: tid,
         customPath: customPath || null,
+        dshHome: dshHome || null,
+        cacheDir: cacheDir || null,
         track: selectedTrack,
-        mode: mode === 'repair' ? 'repair' : 'install',
-        releaseTag: (mode === 'online' || mode === 'repair') ? (document.getElementById('versionSelect').value || null) : null,
+        mode: mode === 'repair' ? 'repair' : (mode === 'download-only' ? 'download-only' : 'install'),
+        releaseTag: (mode === 'online' || mode === 'repair' || mode === 'download-only') ? (document.getElementById('versionSelect').value || null) : null,
+        includePrerelease: Boolean(document.getElementById('chkIncludePrerelease')?.checked),
         confirmTrackSwitch: Boolean(document.getElementById('chkConfirmSwitch').checked),
         apiKeyEnvVar: document.getElementById('envVar').value,
         apiKey: document.getElementById('apiKey').value.trim(),
@@ -2043,7 +2629,7 @@ export function renderStandaloneHtml(token) {
       } else if (mode === 'upload-tgz') {
         const f = document.getElementById('tgzFileInput').files[0];
         if (!f) throw new Error('请先选择本地 .tgz 安装包文件');
-        m.innerHTML = '<div class="alert ok">正在读取本地安装包 ' + esc(f.name) + '…</div>';
+        renderProgressEvent({ stage: 'downloading', stageLabel: '正在上传本地安装包 ' + f.name + '…', percent: 30 });
         const up = await fetch('/upload-tgz?token=' + encodeURIComponent(tok) + '&name=' + encodeURIComponent(f.name), {
           method: 'POST',
           headers: { 'Content-Type': 'application/octet-stream' },
@@ -2054,7 +2640,7 @@ export function renderStandaloneHtml(token) {
         body.localTgzPath = upJson.stagedPath;
       }
 
-      m.innerHTML = '<div class="alert ok">正在校验 SHA-256 并自动安装（约需 10~40 秒，请稍候）…</div>';
+      renderProgressEvent({ stage: 'checking', stageLabel: '正在启动任务…', percent: 8 });
       const r = await fetch('/install?token=' + encodeURIComponent(tok), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2062,6 +2648,7 @@ export function renderStandaloneHtml(token) {
       });
       const j = await r.json();
       if (!r.ok || !j.ok) {
+        renderProgressEvent({ stage: 'failed', stageLabel: '任务未完成，请查看下方错误详情', percent: 100 });
         const f = j.friendly || { title: '安装未完成', friendlyMessage: j.error || '未知错误', suggestion: '请检查提示后重试。', rawDetail: j.error || '' };
         const metaLines = [];
         if (f.failedOperation) metaLines.push('<b>失败操作：</b><code>' + esc(f.failedOperation) + '</code>');
@@ -2074,7 +2661,7 @@ export function renderStandaloneHtml(token) {
           actionBtns.push('<button type="button" class="secondary" id="btnErrRetry">重试安装</button>');
         }
         const rawBlock = f.rawDetail
-          ? '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">查看完整诊断详情</summary><pre style="white-space:pre-wrap;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px;max-height:220px;overflow:auto;font-size:12px">' + esc(f.rawDetail) + '</pre></details>'
+          ? '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">查看完整诊断详情</summary><pre style="white-space:pre-wrap;word-break:break-all;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px;max-height:220px;overflow:auto;font-size:12px">' + esc(f.rawDetail) + '</pre></details>'
           : '';
         m.innerHTML =
           '<div class="alert err"><strong>' + esc(f.title) + '</strong>' +
@@ -2101,11 +2688,21 @@ export function renderStandaloneHtml(token) {
         if (rBtn) rBtn.onclick = () => btn.click();
         return;
       }
+
+      if (j.mode === 'download-only') {
+        m.innerHTML = '<div class="alert ok"><strong>✔ ' + esc((j.brand || 'LT') + ' v' + (j.versionInstalled || '')) + ' 已下载并通过 SHA-256 校验！</strong>' +
+          '<div class="mono" style="margin-top:6px;font-size:12px">文件位置：' + esc(j.tgzToInstall || '') + '<br>SHA-256：' + esc(j.sha256 || '') + (j.cacheHit ? '（命中已校验本地缓存）' : '') + '</div></div>';
+        return;
+      }
+
       const verb = j.mode === 'repair' ? '修复安装成功' : '安装成功';
-      m.innerHTML = '<div class="alert ok"><strong>✔ ' + esc((j.brand || 'LT') + ' v' + (j.versionInstalled || '')) + ' ' + verb + '！</strong><br>桌面端配置已自动优化并完整保留你的原有数据。点击“立即启动 DeepSeek Harness 客户端”即可进入使用！</div>';
-      document.getElementById('btnLaunch').style.display = 'inline-block';
+      m.innerHTML = '<div class="alert ok"><strong>✔ ' + esc((j.brand || 'LT') + ' v' + (j.versionInstalled || '')) + ' ' + verb + '！</strong>' +
+        '<div class="mono" style="margin-top:4px;font-size:12px">已安装至：' + esc(j.dshHome || '') + ' · 缓存包：' + esc(j.tgzToInstall || '') + (j.cacheHit ? '（缓存命中）' : '') + '</div>' +
+        '<div style="margin-top:4px">点击“立即启动 DeepSeek Harness 客户端”即可直接进入 LT 河洛序工作台！</div></div>';
+      document.getElementById('btnLaunch').style.display = 'inline-flex';
       await doScan();
     } catch (e) {
+      renderProgressEvent({ stage: 'failed', stageLabel: e.message || '安装未完成', percent: 100 });
       m.innerHTML = '<div class="alert err"><strong>安装未完成</strong><br>' + esc(e.message) + '</div>';
     } finally {
       btn.disabled = false;
@@ -2115,10 +2712,11 @@ export function renderStandaloneHtml(token) {
   document.getElementById('btnLaunch').onclick = async () => {
     const m = document.getElementById('msg');
     const customPath = document.getElementById('customDshInput').value.trim();
+    const dshHome = document.getElementById('dshHomeInput').value.trim();
     const r = await fetch('/launch?token=' + encodeURIComponent(tok), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetId: tid, customPath: customPath || null }),
+      body: JSON.stringify({ targetId: tid, customPath: customPath || null, dshHome: dshHome || null }),
     });
     const j = await r.json();
     m.innerHTML = j.ok
@@ -2143,6 +2741,17 @@ export async function startStandaloneInstallerServer({
 } = {}) {
   const token = crypto.randomBytes(20).toString('hex');
   const uploadedFiles = new Set();
+  const sseClients = new Set();
+  const broadcastProgress = (ev) => {
+    const payload = `data: ${JSON.stringify(ev)}\n\n`;
+    for (const clientRes of sseClients) {
+      try {
+        if (!clientRes.writableEnded && !clientRes.destroyed) clientRes.write(payload);
+      } catch {
+        sseClients.delete(clientRes);
+      }
+    }
+  };
 
   const server = http.createServer(async (req, res) => {
     const boundPort = server.address()?.port;
@@ -2166,11 +2775,25 @@ export async function startStandaloneInstallerServer({
       return;
     }
 
+    if (req.method === 'GET' && u.pathname === '/events') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-store',
+        Connection: 'keep-alive',
+      });
+      res.write(': connected\n\n');
+      sseClients.add(res);
+      req.on('close', () => sseClients.delete(res));
+      res.on('close', () => sseClients.delete(res));
+      return;
+    }
+
     if (req.method === 'GET' && u.pathname === '/scan') {
       const scanCustom = u.searchParams.get('customPath') || customPath || null;
+      const scanHome = u.searchParams.get('dshHome') || dshHome || null;
       const snap = typeof scanFn === 'function'
-        ? scanFn({ customPath: scanCustom, dshHome })
-        : scanDshTargets({ customPath: scanCustom, dshHome });
+        ? scanFn({ customPath: scanCustom, dshHome: scanHome })
+        : scanDshTargets({ customPath: scanCustom, dshHome: scanHome });
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify(snap));
       return;
@@ -2178,8 +2801,9 @@ export async function startStandaloneInstallerServer({
 
     if (req.method === 'GET' && u.pathname === '/releases') {
       const reqTrack = u.searchParams.get('track') || 'closed-free';
+      const reqPre = u.searchParams.get('includePrerelease') === '1' || u.searchParams.get('includePrerelease') === 'true';
       try {
-        const out = await fetchTrackReleases({ track: reqTrack, platform: process.platform, fetchImpl });
+        const out = await fetchTrackReleases({ track: reqTrack, platform: process.platform, includePrerelease: reqPre, fetchImpl });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify({ ok: true, ...out }));
       } catch (e) {
@@ -2238,6 +2862,8 @@ export async function startStandaloneInstallerServer({
           ...body,
           dshHome: body.dshHome || dshHome,
           customPath: body.customPath || customPath,
+          fetchImpl,
+          onProgress: broadcastProgress,
         });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
@@ -2245,6 +2871,7 @@ export async function startStandaloneInstallerServer({
         const friendly = translateStandaloneInstallError(e, {
           desktopRunning: e?.desktopRunning ?? isOfficialDesktopProcessRunning(process.platform),
         });
+        broadcastProgress({ stage: 'failed', stageLabel: friendly.title, percent: 100, logLine: `[error] ${friendly.friendlyMessage}` });
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: friendly.friendlyMessage, friendly }));
       }
@@ -2294,6 +2921,10 @@ export async function startStandaloneInstallerServer({
     token,
     url,
     async close() {
+      for (const c of sseClients) {
+        try { c.end(); } catch {}
+      }
+      sseClients.clear();
       for (const f of uploadedFiles) {
         try { fs.rmSync(f, { force: true }); } catch {}
       }
@@ -2312,9 +2943,11 @@ function parseStandaloneArgs(argv) {
     port: 0,
     customPath: null,
     dshHome: null,
+    cacheDir: null,
     tgz: null,
     track: 'closed-free',
     releaseTag: null,
+    includePrerelease: false,
     mode: 'install',
     confirmTrackSwitch: false,
   };
@@ -2327,10 +2960,13 @@ function parseStandaloneArgs(argv) {
     else if (a === '--no-open') opts.noOpen = true;
     else if (a === '--json') opts.json = true;
     else if (a === '--repair') opts.mode = 'repair';
+    else if (a === '--download-only') opts.mode = 'download-only';
+    else if (a === '--prerelease' || a === '--include-prerelease') opts.includePrerelease = true;
     else if (a === '--confirm-track-switch') opts.confirmTrackSwitch = true;
     else if (a === '--port' && argv[i + 1]) opts.port = Number(argv[++i]) || 0;
     else if (a === '--custom-path' && argv[i + 1]) opts.customPath = argv[++i];
     else if (a === '--dsh-home' && argv[i + 1]) opts.dshHome = argv[++i];
+    else if (a === '--cache-dir' && argv[i + 1]) opts.cacheDir = argv[++i];
     else if (a === '--tgz' && argv[i + 1]) opts.tgz = argv[++i];
     else if (a === '--track' && argv[i + 1]) opts.track = argv[++i];
     else if ((a === '--version' || a === '--tag') && argv[i + 1]) opts.releaseTag = argv[++i];
@@ -2350,7 +2986,7 @@ if (isMain(import.meta.url)) {
     if (opts.help) {
       console.log([
         'LeaderTeam / Open LeaderTeam Unified Downloader & Installer (LT / OLT · Windows & Linux)',
-        'Usage: node lt-installer-standalone.mjs [--gui|--cli] [--inspect] [--custom-path <dir>] [--track <closed-free|open-source>] [--tag <release-tag>] [--repair] [--confirm-track-switch] [--tgz <file>] [--no-open] [--help]',
+        'Usage: node lt-installer-standalone.mjs [--gui|--cli] [--inspect] [--custom-path <dir>] [--dsh-home <dir>] [--cache-dir <dir>] [--track <closed-free|open-source>] [--tag <release-tag>] [--repair|--download-only] [--confirm-track-switch] [--tgz <file>] [--no-open] [--help]',
       ].join('\n'));
       process.exit(0);
     }
@@ -2362,9 +2998,11 @@ if (isMain(import.meta.url)) {
       const out = await downloadAndInstallStandalone({
         customPath: opts.customPath,
         dshHome: opts.dshHome,
+        cacheDir: opts.cacheDir,
         localTgzPath: opts.tgz,
         track: opts.track,
         releaseTag: opts.releaseTag,
+        includePrerelease: opts.includePrerelease,
         mode: opts.mode,
         confirmTrackSwitch: opts.confirmTrackSwitch,
       });

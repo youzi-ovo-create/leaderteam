@@ -5,10 +5,7 @@ title LeaderTeam Unified One-Click Downloader & Installer
 set "SCRIPT_DIR=%~dp0"
 set "INSTALLER_JS="
 
-if exist "%SCRIPT_DIR%bin\lt-installer.mjs" if exist "%SCRIPT_DIR%leaderteam\core\installer.mjs" (
-  set "INSTALLER_JS=%SCRIPT_DIR%bin\lt-installer.mjs"
-)
-if not defined INSTALLER_JS if exist "%SCRIPT_DIR%installer\lt-installer-standalone.mjs" (
+if exist "%SCRIPT_DIR%installer\lt-installer-standalone.mjs" (
   set "INSTALLER_JS=%SCRIPT_DIR%installer\lt-installer-standalone.mjs"
 )
 if not defined INSTALLER_JS if exist "%SCRIPT_DIR%lt-installer-standalone.mjs" (
